@@ -71,3 +71,12 @@ node ./bin/html2pdf.mjs 'https://time.geekbang.org/column/article/999533?screen=
 
 - Node.js 22+
 - macOS 上安装了 `/Applications/Google Chrome.app`
+- Linux 上安装 Chromium，或设置 `CHROME_PATH=/path/to/chrome`
+
+## Deployment Notes
+
+在有图形会话的 Linux 机器上运行时，可以显式指定显示环境和浏览器路径：
+
+```sh
+DISPLAY=:0 XAUTHORITY=/run/user/1000/gdm/Xauthority CHROME_PATH=/path/to/chrome npm start
+```
