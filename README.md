@@ -21,6 +21,7 @@ http://127.0.0.1:5187
 在页面里粘贴一个或多个 URL：
 
 - 点击“打开登录窗口”会打开独立 Chrome，并进入带回跳地址的极客邦登录页。
+- 可以在页面里配置“账密登录地址”；自动登录会优先打开这个地址。
 - 点击“开始导出”会触发浏览器下载。
 - 一个 URL 下载 PDF，多个 URL 下载 ZIP。
 - 导出时会先用第一个 URL 打开一个预热 tab，不生成 PDF；之后再用新 tab 生成真正的文件，避开首次打开时的一次性页面指引。
@@ -85,4 +86,10 @@ DISPLAY=:0 XAUTHORITY=/run/user/1000/gdm/Xauthority CHROME_PATH=/path/to/chrome 
 
 ```sh
 HOST=0.0.0.0 PORT=5187 npm start
+```
+
+e540 上可以直接运行：
+
+```sh
+./run-e540.sh
 ```

@@ -8,6 +8,7 @@ const exportEl = document.querySelector("#export");
 const clearEl = document.querySelector("#clear");
 const credentialsFormEl = document.querySelector("#credentialsForm");
 const usernameEl = document.querySelector("#username");
+const loginUrlEl = document.querySelector("#loginUrl");
 const passwordEl = document.querySelector("#password");
 const saveCredentialsEl = document.querySelector("#saveCredentials");
 const credentialMetaEl = document.querySelector("#credentialMeta");
@@ -87,6 +88,7 @@ function renderCredentialMeta(meta) {
     return;
   }
   usernameEl.value = meta.username || "";
+  loginUrlEl.value = meta.loginUrl || "";
   credentialMetaEl.textContent = `已保存：${meta.username} · ${meta.updatedAt}`;
 }
 
@@ -102,7 +104,11 @@ async function saveCredentials(event) {
   setBusy(true);
   setState("busy", "Saving", "账密会加密保存到本地 SQLite。");
   try {
-    const meta = await requestJson("/api/credentials/geektime", { username, password });
+    const meta = await requestJson("/api/credentials/geektime", {
+      username,
+      password,
+      loginUrl: loginUrlEl.value.trim()
+    });
     passwordEl.value = "";
     renderCredentialMeta(meta);
     setState("done", "Saved", "密码已加密保存，页面不会回显。");
@@ -135,7 +141,7 @@ async function autoLogin() {
     const result = await requestJson("/api/auto-login", {});
     const detail = result.needsManualAction
       ? "可能触发验证码、扫码或短信验证，需要人工接管。"
-      : result.currentUrl || "登录流程已提交。";
+      : result.currentUrl || result.loginUrl || "登录流程已提交。";
     setState(result.needsManualAction ? "error" : "done", result.needsManualAction ? "Needs Check" : "Login Submitted", detail);
     if (result.needsManualAction) {
       await refreshLoginPreview();

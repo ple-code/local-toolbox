@@ -105,7 +105,8 @@ async function saveCredential(req, res) {
   const body = await readJson(req);
   await credentials.save("geektime", {
     username: body.username,
-    password: body.password
+    password: body.password,
+    loginUrl: body.loginUrl
   });
   json(res, 200, await credentials.getMeta("geektime"));
 }
@@ -118,7 +119,7 @@ async function autoLogin(req, res) {
   const result = await session.autoLogin({
     username: credential.username,
     password: credential.password,
-    loginUrl: DEFAULT_LOGIN_URL,
+    loginUrl: credential.loginUrl || DEFAULT_LOGIN_URL,
     waitMs
   });
   if (!result.needsManualAction) {
@@ -127,6 +128,7 @@ async function autoLogin(req, res) {
   json(res, 200, {
     ok: true,
     username: credential.username,
+    loginUrl: credential.loginUrl || DEFAULT_LOGIN_URL,
     currentUrl: result.currentUrl,
     title: result.title,
     submitted: result.submitted,
