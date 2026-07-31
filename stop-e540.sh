@@ -19,3 +19,10 @@ for pid in $(pgrep -x node || true); do
     echo "local-toolbox stopped stray node: $pid"
   fi
 done
+
+if command -v lsof >/dev/null 2>&1; then
+  for pid in $(lsof -t -iTCP:5187 -sTCP:LISTEN 2>/dev/null || true); do
+    kill "$pid" || true
+    echo "local-toolbox stopped listener: $pid"
+  done
+fi
