@@ -3,8 +3,17 @@ const countEl = document.querySelector("#urlCount");
 const profileMetaEl = document.querySelector("#profileMeta");
 const statusDotEl = document.querySelector("#serverStatus");
 const openBrowserEl = document.querySelector("#openBrowser");
+const autoLoginEl = document.querySelector("#autoLogin");
 const exportEl = document.querySelector("#export");
 const clearEl = document.querySelector("#clear");
+const credentialsFormEl = document.querySelector("#credentialsForm");
+const usernameEl = document.querySelector("#username");
+const passwordEl = document.querySelector("#password");
+const saveCredentialsEl = document.querySelector("#saveCredentials");
+const credentialMetaEl = document.querySelector("#credentialMeta");
+const loginPreviewEl = document.querySelector("#loginPreview");
+const refreshPreviewEl = document.querySelector("#refreshPreview");
+const loginScreenshotEl = document.querySelector("#loginScreenshot");
 const runStateEl = document.querySelector("#runState");
 const stateTitleEl = document.querySelector("#stateTitle");
 const stateDetailEl = document.querySelector("#stateDetail");
@@ -20,8 +29,11 @@ function parseUrls() {
 
 function setBusy(isBusy) {
   openBrowserEl.disabled = isBusy;
+  autoLoginEl.disabled = isBusy;
   exportEl.disabled = isBusy;
   clearEl.disabled = isBusy;
+  saveCredentialsEl.disabled = isBusy;
+  refreshPreviewEl.disabled = isBusy;
 }
 
 function setState(kind, title, detail) {
@@ -56,19 +68,87 @@ async function requestJson(url, payload) {
 }
 
 async function openLoginWindow() {
-  const urls = parseUrls();
-  if (!urls.length) {
-    setState("error", "No URL", "请输入至少一个地址。");
-    return;
-  }
-
   setBusy(true);
   setState("busy", "Opening Chrome", "打开极客邦登录页。");
   try {
     const result = await requestJson("/api/open-browser", {});
     setState("done", "Chrome Ready", result.openedUrl);
+    await refreshLoginPreview();
   } catch (error) {
     setState("error", "Open Failed", error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderCredentialMeta(meta) {
+  if (!meta?.configured) {
+    credentialMetaEl.textContent = "未配置账密";
+    return;
+  }
+  usernameEl.value = meta.username || "";
+  credentialMetaEl.textContent = `已保存：${meta.username} · ${meta.updatedAt}`;
+}
+
+async function saveCredentials(event) {
+  event.preventDefault();
+  const username = usernameEl.value.trim();
+  const password = passwordEl.value;
+  if (!username || !password) {
+    setState("error", "Missing Credentials", "账号和密码都需要填写。");
+    return;
+  }
+
+  setBusy(true);
+  setState("busy", "Saving", "账密会加密保存到本地 SQLite。");
+  try {
+    const meta = await requestJson("/api/credentials/geektime", { username, password });
+    passwordEl.value = "";
+    renderCredentialMeta(meta);
+    setState("done", "Saved", "密码已加密保存，页面不会回显。");
+  } catch (error) {
+    setState("error", "Save Failed", error.message);
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function refreshLoginPreview() {
+  const response = await fetch(`/api/login-screenshot?ts=${Date.now()}`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const oldSrc = loginScreenshotEl.src;
+  loginScreenshotEl.src = URL.createObjectURL(blob);
+  if (oldSrc.startsWith("blob:")) {
+    URL.revokeObjectURL(oldSrc);
+  }
+  loginPreviewEl.hidden = false;
+}
+
+async function autoLogin() {
+  setBusy(true);
+  setState("busy", "Logging In", "正在打开极客邦登录页并自动填写。");
+  try {
+    const result = await requestJson("/api/auto-login", {});
+    const detail = result.needsManualAction
+      ? "可能触发验证码、扫码或短信验证，需要人工接管。"
+      : result.currentUrl || "登录流程已提交。";
+    setState(result.needsManualAction ? "error" : "done", result.needsManualAction ? "Needs Check" : "Login Submitted", detail);
+    if (result.needsManualAction) {
+      await refreshLoginPreview();
+    } else {
+      loginPreviewEl.hidden = true;
+    }
+  } catch (error) {
+    setState("error", "Login Failed", error.message);
+    try {
+      await refreshLoginPreview();
+    } catch {
+      // No open login page to preview.
+    }
   } finally {
     setBusy(false);
   }
@@ -126,6 +206,7 @@ async function loadHealth() {
       throw new Error("Server unavailable");
     }
     profileMetaEl.textContent = data.profileDir;
+    renderCredentialMeta(data.credentials);
     statusDotEl.classList.add("ok");
   } catch {
     profileMetaEl.textContent = "Server unavailable";
@@ -135,7 +216,20 @@ async function loadHealth() {
 
 urlsEl.addEventListener("input", updateCount);
 openBrowserEl.addEventListener("click", openLoginWindow);
+autoLoginEl.addEventListener("click", autoLogin);
 exportEl.addEventListener("click", exportFiles);
+credentialsFormEl.addEventListener("submit", saveCredentials);
+refreshPreviewEl.addEventListener("click", async () => {
+  setBusy(true);
+  try {
+    await refreshLoginPreview();
+    setState("done", "Preview Updated", "登录页截图已刷新。");
+  } catch (error) {
+    setState("error", "Preview Failed", error.message);
+  } finally {
+    setBusy(false);
+  }
+});
 clearEl.addEventListener("click", () => {
   urlsEl.value = "";
   updateCount();

@@ -14,16 +14,20 @@ import {
   randomDelayMs,
   sleep
 } from "./lib/chrome-pdf.mjs";
+import { CredentialStore } from "./lib/credential-store.mjs";
 import { createZip } from "./lib/zip.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
 const port = Number(process.env.PORT || 5187);
+const host = process.env.HOST || "127.0.0.1";
 const profileDir = process.env.CHROME_PROFILE_DIR || path.join(__dirname, ".chrome-profile");
+const dataDir = process.env.LOCAL_TOOLBOX_DATA_DIR || path.join(__dirname, ".local-toolbox");
 const waitMs = Number(process.env.WAIT_MS || 2000);
 const minTabDelayMs = Number(process.env.MIN_TAB_DELAY_MS || 5000);
 const maxTabDelayMs = Number(process.env.MAX_TAB_DELAY_MS || 15000);
 const session = new ChromePdfSession({ profileDir, waitMs, keepBrowser: false });
+const credentials = new CredentialStore({ dataDir });
 let exportInProgress = false;
 
 const contentTypes = new Map([
@@ -93,6 +97,58 @@ async function openForLogin(req, res) {
   });
 }
 
+async function credentialMeta(req, res) {
+  json(res, 200, await credentials.getMeta("geektime"));
+}
+
+async function saveCredential(req, res) {
+  const body = await readJson(req);
+  await credentials.save("geektime", {
+    username: body.username,
+    password: body.password
+  });
+  json(res, 200, await credentials.getMeta("geektime"));
+}
+
+async function autoLogin(req, res) {
+  const credential = await credentials.get("geektime");
+  if (!credential) {
+    throw new Error("还没有保存极客时间账号密码。");
+  }
+  const result = await session.autoLogin({
+    username: credential.username,
+    password: credential.password,
+    loginUrl: DEFAULT_LOGIN_URL,
+    waitMs
+  });
+  if (!result.needsManualAction) {
+    await session.close();
+  }
+  json(res, 200, {
+    ok: true,
+    username: credential.username,
+    currentUrl: result.currentUrl,
+    title: result.title,
+    submitted: result.submitted,
+    needsManualAction: result.needsManualAction,
+    reason: result.reason
+  });
+}
+
+async function loginState(req, res) {
+  json(res, 200, await session.getLoginState());
+}
+
+async function loginScreenshot(req, res) {
+  const image = await session.captureLoginScreenshot();
+  res.writeHead(200, {
+    "content-type": "image/png",
+    "cache-control": "no-store",
+    "content-length": image.length
+  });
+  res.end(image);
+}
+
 async function exportUrls(req, res) {
   if (exportInProgress) {
     errorJson(res, 409, new Error("已有导出任务正在运行，请稍后再试。"));
@@ -159,7 +215,32 @@ const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
     if (req.method === "GET" && url.pathname === "/api/health") {
-      json(res, 200, { ok: true, profileDir });
+      json(res, 200, {
+        ok: true,
+        profileDir,
+        dataDir,
+        credentials: await credentials.getMeta("geektime")
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/credentials/geektime") {
+      await credentialMeta(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/credentials/geektime") {
+      await saveCredential(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/auto-login") {
+      await autoLogin(req, res);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/login-state") {
+      await loginState(req, res);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/login-screenshot") {
+      await loginScreenshot(req, res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/open-browser") {
@@ -186,7 +267,7 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
-server.listen(port, "127.0.0.1", () => {
-  console.log(`HTML to PDF web tool: http://127.0.0.1:${port}`);
+server.listen(port, host, () => {
+  console.log(`HTML to PDF web tool: http://${host}:${port}`);
   console.log(`Chrome profile: ${profileDir}`);
 });

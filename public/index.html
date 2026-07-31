@@ -33,6 +33,10 @@
               <span aria-hidden="true">↗</span>
               <span>打开登录窗口</span>
             </button>
+            <button class="button secondary" id="autoLogin" type="button">
+              <span aria-hidden="true">→</span>
+              <span>自动登录</span>
+            </button>
             <button class="button primary" id="export" type="button">
               <span aria-hidden="true">⇩</span>
               <span>开始导出</span>
@@ -41,6 +45,30 @@
               <span aria-hidden="true">×</span>
               <span>清空</span>
             </button>
+          </div>
+
+          <form class="credentials" id="credentialsForm">
+            <div class="field">
+              <label for="username">账号</label>
+              <input id="username" autocomplete="username" placeholder="手机号或邮箱">
+            </div>
+            <div class="field">
+              <label for="password">密码</label>
+              <input id="password" type="password" autocomplete="current-password" placeholder="保存后不会回显">
+            </div>
+            <button class="button ghost" id="saveCredentials" type="submit">
+              <span aria-hidden="true">▣</span>
+              <span>保存账密</span>
+            </button>
+            <div class="credential-meta" id="credentialMeta">未配置账密</div>
+          </form>
+
+          <div class="login-preview" id="loginPreview" hidden>
+            <div class="preview-head">
+              <span>登录页预览</span>
+              <button class="icon-button" id="refreshPreview" type="button" aria-label="刷新登录页截图">↻</button>
+            </div>
+            <img id="loginScreenshot" alt="远程浏览器登录页截图">
           </div>
 
           <div class="run-state" id="runState">

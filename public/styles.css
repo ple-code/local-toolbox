@@ -25,6 +25,7 @@ body {
 }
 
 button,
+input,
 textarea {
   font: inherit;
 }
@@ -157,6 +158,88 @@ textarea:focus {
   gap: 10px;
   padding: 18px 0;
   border-bottom: 1px solid var(--line);
+}
+
+.credentials {
+  display: grid;
+  gap: 10px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field label {
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+input {
+  width: 100%;
+  min-height: 40px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  outline: 0;
+  padding: 0 11px;
+  color: var(--ink);
+  background: #fbfcfa;
+}
+
+input:focus {
+  border-color: #8bc6b3;
+  box-shadow: 0 0 0 3px rgba(13, 122, 97, 0.13);
+}
+
+.credential-meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.login-preview {
+  padding: 18px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.icon-button {
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: #fbfcfa;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.login-preview img {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+  margin-top: 10px;
+  object-fit: contain;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #111;
 }
 
 .button {

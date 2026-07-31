@@ -80,3 +80,9 @@ node ./bin/html2pdf.mjs 'https://time.geekbang.org/column/article/999533?screen=
 ```sh
 DISPLAY=:0 XAUTHORITY=/run/user/1000/gdm/Xauthority CHROME_PATH=/path/to/chrome npm start
 ```
+
+对外提供 Web 页面时设置监听地址：
+
+```sh
+HOST=0.0.0.0 PORT=5187 npm start
+```
