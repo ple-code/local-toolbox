@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HTML to PDF</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>HTML to PDF</h1>
+          <p class="meta" id="profileMeta">Profile loading</p>
+        </div>
+        <span class="status-dot" id="serverStatus" aria-label="服务状态"></span>
+      </header>
+
+      <section class="workspace" aria-label="导出工具">
+        <div class="editor">
+          <label for="urls">URLs</label>
+          <textarea id="urls" spellcheck="false">https://time.geekbang.org/column/article/999533?screen=full</textarea>
+        </div>
+
+        <aside class="panel" aria-label="操作">
+          <div class="counter">
+            <span id="urlCount">1</span>
+            <small>items</small>
+          </div>
+
+          <div class="actions">
+            <button class="button secondary" id="openBrowser" type="button">
+              <span aria-hidden="true">↗</span>
+              <span>打开登录窗口</span>
+            </button>
+            <button class="button primary" id="export" type="button">
+              <span aria-hidden="true">⇩</span>
+              <span>开始导出</span>
+            </button>
+            <button class="button ghost" id="clear" type="button">
+              <span aria-hidden="true">×</span>
+              <span>清空</span>
+            </button>
+          </div>
+
+          <div class="run-state" id="runState">
+            <div class="state-title" id="stateTitle">Ready</div>
+            <div class="state-detail" id="stateDetail">单个地址下载 PDF，多个地址下载 ZIP。</div>
+          </div>
+
+          <div class="download" id="downloadInfo" hidden>
+            <div class="download-label">Latest</div>
+            <div class="download-name" id="downloadName"></div>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
