@@ -666,6 +666,11 @@ async function exportFiles() {
         platform: targetPlatformEl.value
       });
       pendingManualLoginTaskId = prepare.taskId || taskId;
+      if (prepare.status === "authenticated") {
+        setState("busy", "Preparing", "检测到已有知识星球登录态，正在继续导出。");
+        await continueManualLoginExport();
+        return;
+      }
       setState("busy", "Waiting Login", "知识星球登录页已打开，请扫码后继续导出。");
       try {
         await refreshManualLoginPreview();

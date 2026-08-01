@@ -160,6 +160,23 @@ function samePlatformHost(platform, value) {
   }
 }
 
+function isZsxqAuthenticatedLoginState(state = {}, loginUrl = "") {
+  try {
+    const current = new URL(state.currentUrl || "");
+    const login = loginUrl ? new URL(loginUrl) : undefined;
+    const isZsxqHost = current.hostname.endsWith("zsxq.com");
+    const isLoginPath = login
+      ? current.hostname === login.hostname && current.pathname === login.pathname
+      : /\/login\/?$/.test(current.pathname);
+    const text = String(state.text || "");
+    const hasLoggedInShell = /所有星球|加入的星球|创建\/管理的星球|最新动态|管理后台/.test(text);
+    const hasLoginPrompt = /扫码登录|微信扫一扫|获取登录二维码|登录二维码/.test(text);
+    return isZsxqHost && (!isLoginPath || hasLoggedInShell) && !state.qrVisible && !hasLoginPrompt;
+  } catch {
+    return false;
+  }
+}
+
 async function resolveLoginUrlForPlatform(platform, explicitLoginUrl = "") {
   const parsedExplicit = parseUrlList([explicitLoginUrl])[0];
   if (parsedExplicit) {
@@ -811,6 +828,23 @@ async function prepareManualLoginExport(req, res) {
     });
     await session.openForLogin(loginUrl, { waitMs });
     const agreement = await session.acceptLoginAgreement();
+    if (isZsxqAuthenticatedLoginState(agreement, loginUrl)) {
+      taskStore.updateTaskSync(taskId, {
+        status: "running",
+        config: { manualLoginPhase: "authenticated" }
+      });
+      logStep("检测到已有知识星球登录态，跳过扫码确认", {
+        taskId,
+        currentUrl: agreement.currentUrl,
+        title: agreement.title
+      });
+      json(res, 200, {
+        ok: true,
+        taskId,
+        status: "authenticated"
+      });
+      return;
+    }
     taskStore.updateTaskSync(taskId, {
       status: "waiting_login",
       config: { manualLoginPhase: "waiting_scan" }
@@ -854,7 +888,10 @@ async function continueManualLoginExport(req, res, taskId) {
     if (!storedTask) {
       throw new Error("任务不存在。");
     }
-    if (storedTask.platformKey !== "zsxq" || storedTask.status !== "waiting_login") {
+    const canContinue = storedTask.platformKey === "zsxq" &&
+      (storedTask.status === "waiting_login" ||
+        (storedTask.status === "running" && storedTask.config?.manualLoginPhase === "authenticated"));
+    if (!canContinue) {
       throw new Error("当前任务不是等待扫码确认的知识星球任务。");
     }
     const platform = platformFromKey(storedTask.platformKey);
@@ -864,11 +901,14 @@ async function continueManualLoginExport(req, res, taskId) {
       status: "running",
       config: { manualLoginPhase: "confirmed" }
     });
-    logStep("已确认扫码，继续导出任务", {
+    logStep(
+      storedTask.config?.manualLoginPhase === "authenticated" ? "已有登录态，继续导出任务" : "已确认扫码，继续导出任务",
+      {
       taskId,
       count: urls.length,
       platform: platform.name
-    });
+      }
+    );
     const pdfs = await runExportTask({ taskId, urls, platform, delayRange });
     await sendExportResult(res, taskId, pdfs);
   } catch (error) {
