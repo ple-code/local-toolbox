@@ -26,9 +26,33 @@ const dataDir = process.env.LOCAL_TOOLBOX_DATA_DIR || path.join(__dirname, ".loc
 const waitMs = Number(process.env.WAIT_MS || 2000);
 const minTabDelayMs = Number(process.env.MIN_TAB_DELAY_MS || 5000);
 const maxTabDelayMs = Number(process.env.MAX_TAB_DELAY_MS || 15000);
-const session = new ChromePdfSession({ profileDir, waitMs, keepBrowser: false });
 const credentials = new CredentialStore({ dataDir });
 let exportInProgress = false;
+let nextLogId = 1;
+const runLogs = [];
+
+function sanitizeLogMeta(meta = {}) {
+  return Object.fromEntries(Object.entries(meta).filter(([key]) => !/password|secret|payload/i.test(key)));
+}
+
+function logStep(message, meta = {}) {
+  const entry = {
+    id: nextLogId,
+    time: new Date().toISOString(),
+    message,
+    meta: sanitizeLogMeta(meta)
+  };
+  nextLogId += 1;
+  runLogs.push(entry);
+  if (runLogs.length > 300) {
+    runLogs.splice(0, runLogs.length - 300);
+  }
+  const metaText = Object.keys(entry.meta).length ? ` ${JSON.stringify(entry.meta)}` : "";
+  console.log(`[${entry.time}] ${message}${metaText}`);
+  return entry;
+}
+
+const session = new ChromePdfSession({ profileDir, waitMs, keepBrowser: false, log: logStep });
 
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
@@ -89,7 +113,9 @@ async function serveStatic(req, res) {
 async function openForLogin(req, res) {
   const body = await readJson(req);
   const loginUrl = body.loginUrl ? parseUrlList([body.loginUrl])[0] : DEFAULT_LOGIN_URL;
+  logStep("打开登录窗口", { loginUrl });
   await session.openForLogin(loginUrl, { waitMs });
+  logStep("登录窗口已打开", { loginUrl, profileDir });
   json(res, 200, {
     ok: true,
     profileDir,
@@ -103,6 +129,10 @@ async function credentialMeta(req, res) {
 
 async function saveCredential(req, res) {
   const body = await readJson(req);
+  logStep("保存极客时间账密配置", {
+    username: body.username,
+    loginUrl: body.loginUrl || DEFAULT_LOGIN_URL
+  });
   await credentials.save("geektime", {
     username: body.username,
     password: body.password,
@@ -112,23 +142,36 @@ async function saveCredential(req, res) {
 }
 
 async function autoLogin(req, res) {
+  logStep("开始自动登录");
   const credential = await credentials.get("geektime");
   if (!credential) {
     throw new Error("还没有保存极客时间账号密码。");
   }
+  const loginUrl = credential.loginUrl || DEFAULT_LOGIN_URL;
+  logStep("读取到登录配置", { username: credential.username, loginUrl });
   const result = await session.autoLogin({
     username: credential.username,
     password: credential.password,
-    loginUrl: credential.loginUrl || DEFAULT_LOGIN_URL,
+    loginUrl,
     waitMs
   });
   if (!result.needsManualAction) {
+    logStep("自动登录结束，关闭远程 Chrome", {
+      currentUrl: result.currentUrl,
+      submitted: result.submitted,
+      reason: result.reason
+    });
     await session.close();
+  } else {
+    logStep("自动登录需要人工处理", {
+      currentUrl: result.currentUrl,
+      reason: result.reason
+    });
   }
   json(res, 200, {
     ok: true,
     username: credential.username,
-    loginUrl: credential.loginUrl || DEFAULT_LOGIN_URL,
+    loginUrl,
     currentUrl: result.currentUrl,
     title: result.title,
     submitted: result.submitted,
@@ -138,10 +181,12 @@ async function autoLogin(req, res) {
 }
 
 async function loginState(req, res) {
+  logStep("检查登录页状态");
   json(res, 200, await session.getLoginState());
 }
 
 async function loginScreenshot(req, res) {
+  logStep("刷新登录页截图");
   const image = await session.captureLoginScreenshot();
   res.writeHead(200, {
     "content-type": "image/png",
@@ -164,8 +209,10 @@ async function exportUrls(req, res) {
     if (!urls.length) {
       throw new Error("至少需要一个 URL。");
     }
+    logStep("开始导出任务", { count: urls.length });
 
     await session.closeLoginTab();
+    logStep("打开预热页面", { url: urls[0] });
     const warmupTab = await session.openWarmupTab(urls[0], { waitMs });
     let warmupClosed = false;
     const usedNames = new Set();
@@ -173,12 +220,16 @@ async function exportUrls(req, res) {
     try {
       for (const url of urls) {
         const delayMs = randomDelayMs(minTabDelayMs, maxTabDelayMs);
+        logStep("等待随机间隔后打开导出页面", { url, delayMs });
         await sleep(delayMs);
         if (!warmupClosed) {
           await session.closeTab(warmupTab);
           warmupClosed = true;
+          logStep("预热页面已关闭");
         }
+        logStep("开始生成 PDF", { url });
         const data = await session.pdfForUrl(url, { waitMs });
+        logStep("PDF 已生成", { url, sizeKb: Math.round(data.length / 1024) });
         pdfs.push({
           name: pdfFilenameForUrl(url, usedNames),
           data
@@ -191,6 +242,7 @@ async function exportUrls(req, res) {
     }
 
     if (pdfs.length === 1) {
+      logStep("返回 PDF 下载", { filename: pdfs[0].name, sizeKb: Math.round(pdfs[0].data.length / 1024) });
       res.writeHead(200, {
         "content-type": "application/pdf",
         "content-disposition": `attachment; filename="${pdfs[0].name}"`,
@@ -201,6 +253,7 @@ async function exportUrls(req, res) {
     }
 
     const zip = createZip(pdfs);
+    logStep("返回 ZIP 下载", { count: pdfs.length, sizeKb: Math.round(zip.length / 1024) });
     res.writeHead(200, {
       "content-type": "application/zip",
       "content-disposition": 'attachment; filename="html2pdf-export.zip"',
@@ -209,6 +262,7 @@ async function exportUrls(req, res) {
     res.end(zip);
   } finally {
     await session.close();
+    logStep("导出任务结束，远程 Chrome 已关闭");
     exportInProgress = false;
   }
 }
@@ -222,6 +276,14 @@ const server = createServer(async (req, res) => {
         profileDir,
         dataDir,
         credentials: await credentials.getMeta("geektime")
+      });
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/logs") {
+      const after = Number(url.searchParams.get("after") || 0);
+      json(res, 200, {
+        ok: true,
+        logs: runLogs.filter((entry) => entry.id > after)
       });
       return;
     }
@@ -260,6 +322,7 @@ const server = createServer(async (req, res) => {
     res.writeHead(405);
     res.end("Method not allowed");
   } catch (error) {
+    logStep("请求失败", { method: req.method, url: req.url, error: error.message || String(error) });
     errorJson(res, 500, error);
   }
 });
@@ -270,6 +333,9 @@ process.on("SIGINT", async () => {
 });
 
 server.listen(port, host, () => {
-  console.log(`HTML to PDF web tool: http://${host}:${port}`);
-  console.log(`Chrome profile: ${profileDir}`);
+  logStep("服务已启动", {
+    url: `http://${host}:${port}`,
+    profileDir,
+    dataDir
+  });
 });

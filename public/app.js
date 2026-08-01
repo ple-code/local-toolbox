@@ -18,8 +18,12 @@ const loginScreenshotEl = document.querySelector("#loginScreenshot");
 const runStateEl = document.querySelector("#runState");
 const stateTitleEl = document.querySelector("#stateTitle");
 const stateDetailEl = document.querySelector("#stateDetail");
+const logListEl = document.querySelector("#logList");
+const logEmptyEl = document.querySelector("#logEmpty");
 const downloadInfoEl = document.querySelector("#downloadInfo");
 const downloadNameEl = document.querySelector("#downloadName");
+let lastLogId = 0;
+let logPollTimer = 0;
 
 function parseUrls() {
   return urlsEl.value
@@ -68,11 +72,68 @@ async function requestJson(url, payload) {
   return data;
 }
 
+function formatLogTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function appendLogs(entries) {
+  if (!entries?.length) {
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  for (const entry of entries) {
+    lastLogId = Math.max(lastLogId, entry.id || 0);
+    const row = document.createElement("div");
+    row.className = "log-row";
+
+    const head = document.createElement("div");
+    head.className = "log-row-head";
+
+    const time = document.createElement("span");
+    time.className = "log-time";
+    time.textContent = formatLogTime(entry.time);
+
+    const message = document.createElement("span");
+    message.className = "log-message";
+    message.textContent = entry.message || "";
+
+    head.append(time, message);
+    row.append(head);
+
+    if (entry.meta && Object.keys(entry.meta).length) {
+      const meta = document.createElement("pre");
+      meta.className = "log-meta";
+      meta.textContent = JSON.stringify(entry.meta, null, 2);
+      row.append(meta);
+    }
+
+    fragment.append(row);
+  }
+  logListEl.append(fragment);
+  while (logListEl.children.length > 50) {
+    logListEl.firstElementChild.remove();
+  }
+  logListEl.scrollTop = logListEl.scrollHeight;
+  logEmptyEl.hidden = logListEl.children.length > 0;
+}
+
+async function refreshLogs() {
+  const response = await fetch(`/api/logs?after=${lastLogId}`);
+  if (!response.ok) {
+    return;
+  }
+  const data = await response.json().catch(() => ({}));
+  appendLogs(data.logs || []);
+}
+
 async function openLoginWindow() {
   setBusy(true);
   setState("busy", "Opening Chrome", "打开极客邦登录页。");
   try {
-    const result = await requestJson("/api/open-browser", {});
+    const result = await requestJson("/api/open-browser", {
+      loginUrl: loginUrlEl.value.trim()
+    });
     setState("done", "Chrome Ready", result.openedUrl);
     await refreshLoginPreview();
   } catch (error) {
@@ -220,6 +281,15 @@ async function loadHealth() {
   }
 }
 
+function startLogPolling() {
+  if (logPollTimer) {
+    return;
+  }
+  logPollTimer = window.setInterval(() => {
+    refreshLogs().catch(() => undefined);
+  }, 2000);
+}
+
 urlsEl.addEventListener("input", updateCount);
 openBrowserEl.addEventListener("click", openLoginWindow);
 autoLoginEl.addEventListener("click", autoLogin);
@@ -243,4 +313,5 @@ clearEl.addEventListener("click", () => {
 });
 
 updateCount();
-loadHealth();
+loadHealth().then(() => refreshLogs().catch(() => undefined));
+startLogPolling();

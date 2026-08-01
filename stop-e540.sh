@@ -26,3 +26,11 @@ if command -v lsof >/dev/null 2>&1; then
     echo "local-toolbox stopped listener: $pid"
   done
 fi
+
+for pid in $(pgrep -x chrome || true); do
+  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  if [[ "$cmd" == *"--user-data-dir=$HOME/apps/local-toolbox/.chrome-profile"* ]]; then
+    kill "$pid" || true
+    echo "local-toolbox stopped chrome: $pid"
+  fi
+done
