@@ -857,8 +857,25 @@ select {
   overflow-wrap: anywhere;
 }
 
+.log-details {
+  margin-left: 74px;
+}
+
+.log-details summary {
+  width: fit-content;
+  color: rgba(255, 255, 255, 0.62);
+  cursor: pointer;
+  list-style-position: inside;
+  font-size: 11px;
+  user-select: none;
+}
+
+.log-details summary:hover {
+  color: var(--surface);
+}
+
 .log-meta {
-  margin: 0 0 0 74px;
+  margin: 4px 0 0;
   color: rgba(255, 255, 255, 0.68);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -922,7 +939,7 @@ select {
 
 .config-tabs {
   display: inline-grid;
-  grid-template-columns: repeat(3, minmax(112px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
   width: min(100%, 480px);
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1070,6 +1087,7 @@ select {
     gap: 2px;
   }
 
+  .log-details,
   .log-meta {
     margin-left: 0;
   }

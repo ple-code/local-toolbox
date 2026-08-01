@@ -422,7 +422,8 @@ async function exportUrls(req, res) {
     try {
       for (const url of urls) {
         const delayMs = randomDelayMs(delayRange.minMs, delayRange.maxMs);
-        logStep("等待随机间隔后打开导出页面", { url, delayMs });
+        const delaySeconds = (delayMs / 1000).toFixed(1);
+        logStep(`等待随机间隔 ${delaySeconds} 秒后打开导出页面`, { url, delayMs, delaySeconds });
         await sleep(delayMs);
         if (!warmupClosed) {
           await session.closeTab(warmupTab);

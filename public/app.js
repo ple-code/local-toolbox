@@ -11,6 +11,9 @@ const credentialsFormEl = document.querySelector("#credentialsForm");
 const usernameEl = document.querySelector("#username");
 const loginUrlEl = document.querySelector("#loginUrl");
 const passwordEl = document.querySelector("#password");
+const usernameFieldEl = usernameEl.closest(".field");
+const loginUrlFieldEl = document.querySelector("#loginUrlField");
+const passwordFieldEl = document.querySelector("#passwordField");
 const saveCredentialsEl = document.querySelector("#saveCredentials");
 const saveCredentialsTextEl = document.querySelector("#saveCredentialsText");
 const credentialMetaEl = document.querySelector("#credentialMeta");
@@ -287,10 +290,17 @@ function renderLogs() {
     row.append(head);
 
     if (entry.meta && Object.keys(entry.meta).length) {
+      const details = document.createElement("details");
+      details.className = "log-details";
+
+      const summary = document.createElement("summary");
+      summary.textContent = "详情";
+
       const meta = document.createElement("pre");
       meta.className = "log-meta";
       meta.textContent = JSON.stringify(entry.meta, null, 2);
-      row.append(meta);
+      details.append(summary, meta);
+      row.append(details);
     }
 
     fragment.append(row);
@@ -352,6 +362,10 @@ function renderCredentialMeta(meta, platform = platformCatalog.get(currentConfig
   platformLoginModeTextEl.textContent = authMode === "credentials" ? "账号密码登录" : authMode === "manual" ? "手动扫码登录" : "无需登录";
   loginUrlLabelEl.textContent = isManual ? "手动登录地址" : "账密登录地址";
   saveCredentialsTextEl.textContent = isManual ? "保存登录地址" : "保存账密";
+  usernameFieldEl.hidden = authMode !== "credentials";
+  passwordFieldEl.hidden = authMode !== "credentials";
+  loginUrlFieldEl.hidden = authMode === "none";
+  autoLoginEl.hidden = authMode !== "credentials";
   usernameEl.disabled = authMode !== "credentials";
   passwordEl.disabled = authMode !== "credentials";
   loginUrlEl.disabled = authMode === "none";
@@ -418,7 +432,7 @@ async function saveCredentials(event) {
     return;
   }
   if (!loginUrl) {
-    setState("error", "Missing Login URL", "请填写账密登录地址。");
+    setState("error", "Missing Login URL", platform?.authMode === "manual" ? "请填写手动登录地址。" : "请填写账密登录地址。");
     return;
   }
 
