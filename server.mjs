@@ -71,6 +71,43 @@ function hasGeektimeUrl(urls) {
   });
 }
 
+function delayRangeFromBody(body = {}) {
+  const rawMin = Number(body.minTabDelayMs);
+  const rawMax = Number(body.maxTabDelayMs);
+  if (Number.isFinite(rawMin) && Number.isFinite(rawMax)) {
+    const min = Math.max(0, Math.floor(rawMin));
+    const max = Math.max(min, Math.floor(rawMax));
+    return { minMs: min, maxMs: max, source: "custom" };
+  }
+
+  const pace = String(body.pace || "");
+  if (pace.includes("快速")) {
+    return { minMs: 1000, maxMs: 3000, source: "fast" };
+  }
+  if (pace.includes("标准")) {
+    return { minMs: 4000, maxMs: 9000, source: "standard" };
+  }
+  if (pace.includes("稳妥")) {
+    return { minMs: 5000, maxMs: 15000, source: "safe" };
+  }
+  return { minMs: minTabDelayMs, maxMs: maxTabDelayMs, source: "env" };
+}
+
+function runtimeHealth() {
+  const hostLabel = host === "127.0.0.1" || host === "localhost" ? "本机" : "e540";
+  return {
+    host,
+    port,
+    hostLabel,
+    profileDir,
+    dataDir,
+    waitMs,
+    minTabDelayMs,
+    maxTabDelayMs,
+    exportInProgress
+  };
+}
+
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -240,7 +277,13 @@ async function exportUrls(req, res) {
     if (!urls.length) {
       throw new Error("至少需要一个 URL。");
     }
-    logStep("开始导出任务", { count: urls.length });
+    const delayRange = delayRangeFromBody(body);
+    logStep("开始导出任务", {
+      count: urls.length,
+      pace: delayRange.source,
+      minDelayMs: delayRange.minMs,
+      maxDelayMs: delayRange.maxMs
+    });
 
     if (hasGeektimeUrl(urls)) {
       const credential = await credentials.get("geektime");
@@ -281,7 +324,7 @@ async function exportUrls(req, res) {
     const pdfs = [];
     try {
       for (const url of urls) {
-        const delayMs = randomDelayMs(minTabDelayMs, maxTabDelayMs);
+        const delayMs = randomDelayMs(delayRange.minMs, delayRange.maxMs);
         logStep("等待随机间隔后打开导出页面", { url, delayMs });
         await sleep(delayMs);
         if (!warmupClosed) {
@@ -337,6 +380,7 @@ const server = createServer(async (req, res) => {
         ok: true,
         profileDir,
         dataDir,
+        runtime: runtimeHealth(),
         credentials: await credentials.getMeta("geektime")
       });
       return;

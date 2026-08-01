@@ -22,8 +22,31 @@ const logListEl = document.querySelector("#logList");
 const logEmptyEl = document.querySelector("#logEmpty");
 const downloadInfoEl = document.querySelector("#downloadInfo");
 const downloadNameEl = document.querySelector("#downloadName");
+const paceEl = document.querySelector("#pace");
+const credentialPillEl = document.querySelector("#credentialPill");
+const servicePillEl = document.querySelector("#servicePill");
+const serviceTextEl = document.querySelector("#serviceText");
+const hostMetaEl = document.querySelector("#hostMeta");
+const platformValueEl = document.querySelector("#platformValue");
+const platformLoginTextEl = document.querySelector("#platformLoginText");
+const platformCredentialTextEl = document.querySelector("#platformCredentialText");
+const historyLatestEl = document.querySelector("#historyLatest");
+const queueListEl = document.querySelector("#queueList");
+const queueSummaryEl = document.querySelector("#queueSummary");
+const runPillEl = document.querySelector("#runPill");
+const runSubtitleEl = document.querySelector("#runSubtitle");
+const totalProgressEl = document.querySelector("#totalProgress");
+const stepListEl = document.querySelector("#stepList");
+const previewUrlEl = document.querySelector("#previewUrl");
+const previewSkeletonEl = document.querySelector("#previewSkeleton");
+const captureTagEl = document.querySelector("#captureTag");
+const resultPillEl = document.querySelector("#resultPill");
+const resultRowsEl = document.querySelector("#resultRows");
+const sampleUrlsEl = document.querySelector("#sampleUrls");
+const jumpLogsEl = document.querySelector("#jumpLogs");
 let lastLogId = 0;
 let logPollTimer = 0;
+let queueState = [];
 
 function parseUrls() {
   return urlsEl.value
@@ -42,13 +65,95 @@ function setBusy(isBusy) {
 }
 
 function setState(kind, title, detail) {
-  runStateEl.className = `run-state ${kind || ""}`.trim();
+  runStateEl.className = `run-card ${kind || ""}`.trim();
   stateTitleEl.textContent = title;
   stateDetailEl.textContent = detail;
+  runPillEl.className = `status-pill ${kind === "done" ? "ok" : kind === "error" ? "error" : kind === "busy" ? "warn" : ""}`.trim();
+  runPillEl.textContent = kind === "done" ? "已完成" : kind === "error" ? "失败" : kind === "busy" ? "执行中" : "待执行";
+  runSubtitleEl.textContent = title;
+  captureTagEl.textContent = detail || title;
+
+  const progress = kind === "done" ? 100 : kind === "busy" ? 42 : kind === "error" ? 100 : 0;
+  totalProgressEl.style.width = `${progress}%`;
+  updateSteps(kind, title, detail);
 }
 
 function updateCount() {
-  countEl.textContent = String(parseUrls().length);
+  const urls = parseUrls();
+  countEl.textContent = String(urls.length);
+  renderQueue(urls);
+}
+
+function hostnameFromUrl(value) {
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return "invalid-url";
+  }
+}
+
+function updateSteps(kind, title, detail = "") {
+  const text = `${title} ${detail}`;
+  let active = "ready";
+  if (/Opening|Chrome|打开|登录|Preparing|准备/i.test(text)) active = "open";
+  if (/scroll|滚动|加载/i.test(text)) active = "scroll";
+  if (/PDF|生成|Downloading|下载/i.test(text)) active = "pdf";
+  if (kind === "done" || /完成|Downloaded/i.test(text)) active = "done";
+
+  stepListEl.querySelectorAll(".step").forEach((step) => {
+    step.classList.toggle("active", step.dataset.step === active);
+  });
+}
+
+function renderQueue(urls = parseUrls()) {
+  queueState = urls.map((url, index) => ({
+    url,
+    host: hostnameFromUrl(url),
+    duplicate: urls.indexOf(url) !== index,
+    status: queueState[index]?.status || "waiting"
+  }));
+
+  const fragment = document.createDocumentFragment();
+  queueState.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = `queue-item ${index === 0 ? "active" : ""}`.trim();
+
+    const status = document.createElement("span");
+    status.className = "queue-status";
+    status.textContent = item.duplicate ? "!" : String(index + 1);
+
+    const main = document.createElement("div");
+    main.className = "queue-main";
+
+    const url = document.createElement("div");
+    url.className = "queue-url";
+    url.textContent = item.url;
+
+    const note = document.createElement("div");
+    note.className = "queue-note";
+    note.textContent = item.duplicate ? "重复地址，导出前建议处理" : "等待中";
+
+    const host = document.createElement("span");
+    host.className = "queue-host";
+    host.textContent = item.host;
+
+    main.append(url, note);
+    row.append(status, main, host);
+    fragment.append(row);
+  });
+
+  queueListEl.replaceChildren(fragment);
+  queueSummaryEl.textContent = `0 / ${urls.length} 完成`;
+  if (!urls.length) {
+    queueSummaryEl.textContent = "0 / 0 完成";
+    const empty = document.createElement("div");
+    empty.className = "credential-meta";
+    empty.textContent = "URL 列表为空。";
+    queueListEl.append(empty);
+  }
+
+  const firstUrl = urls[0];
+  previewUrlEl.textContent = firstUrl ? firstUrl.replace(/^https?:\/\//, "") : "等待 URL";
 }
 
 function filenameFromDisposition(header, fallback) {
@@ -109,6 +214,7 @@ function appendLogs(entries) {
     }
 
     fragment.append(row);
+    updateSteps("busy", entry.message || "", entry.meta ? JSON.stringify(entry.meta) : "");
   }
   logListEl.append(fragment);
   while (logListEl.children.length > 50) {
@@ -150,11 +256,19 @@ async function openLoginWindow() {
 function renderCredentialMeta(meta) {
   if (!meta?.configured) {
     credentialMetaEl.textContent = "未配置账密";
+    credentialPillEl.className = "status-pill warn";
+    credentialPillEl.textContent = "凭证未配置";
+    platformCredentialTextEl.textContent = "未配置";
+    platformLoginTextEl.textContent = "未配置";
     return;
   }
   usernameEl.value = meta.username || "";
   loginUrlEl.value = meta.loginUrl || "";
   credentialMetaEl.textContent = `已保存：${meta.username} · ${meta.updatedAt}`;
+  credentialPillEl.className = "status-pill ok";
+  credentialPillEl.textContent = "账号已配置";
+  platformCredentialTextEl.textContent = `已保存：${meta.username || "未命名账号"}`;
+  platformLoginTextEl.textContent = meta.loginUrl || "未配置";
 }
 
 async function saveCredentials(event) {
@@ -202,6 +316,8 @@ async function refreshLoginPreview() {
     URL.revokeObjectURL(oldSrc);
   }
   loginPreviewEl.hidden = false;
+  previewSkeletonEl.hidden = true;
+  captureTagEl.textContent = "登录截图已刷新";
 }
 
 async function autoLogin() {
@@ -244,7 +360,7 @@ async function exportFiles() {
     const response = await fetch("/api/export", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ urls })
+      body: JSON.stringify({ urls, pace: paceEl.value })
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
@@ -266,12 +382,35 @@ async function exportFiles() {
 
     downloadInfoEl.hidden = false;
     downloadNameEl.textContent = filename;
+    renderDownloadResult(filename, blob.size, urls.length);
     setState("done", "Downloaded", `${Math.round(blob.size / 1024)} KB`);
   } catch (error) {
     setState("error", "Export Failed", error.message);
   } finally {
     setBusy(false);
   }
+}
+
+function renderDownloadResult(filename, size, urlCount) {
+  const type = urlCount > 1 ? "ZIP" : "PDF";
+  resultPillEl.className = "status-pill ok";
+  resultPillEl.textContent = `${type} 已生成`;
+  resultRowsEl.innerHTML = "";
+
+  const row = document.createElement("tr");
+  const file = document.createElement("td");
+  file.className = "file-cell";
+  file.textContent = filename;
+
+  const kind = document.createElement("td");
+  kind.textContent = type;
+
+  const sizeCell = document.createElement("td");
+  sizeCell.textContent = `${Math.max(1, Math.round(size / 1024))} KB`;
+
+  row.append(file, kind, sizeCell);
+  resultRowsEl.append(row);
+  historyLatestEl.textContent = filename;
 }
 
 async function loadHealth() {
@@ -284,9 +423,15 @@ async function loadHealth() {
     profileMetaEl.textContent = data.profileDir;
     renderCredentialMeta(data.credentials);
     statusDotEl.classList.add("ok");
+    servicePillEl.className = "status-pill service ok";
+    serviceTextEl.textContent = "服务在线";
+    hostMetaEl.textContent = data.runtime?.hostLabel ||
+      (location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "本机" : "e540");
   } catch {
     profileMetaEl.textContent = "Server unavailable";
     statusDotEl.classList.remove("ok");
+    servicePillEl.className = "status-pill service error";
+    serviceTextEl.textContent = "服务不可用";
   }
 }
 
@@ -319,6 +464,40 @@ clearEl.addEventListener("click", () => {
   urlsEl.value = "";
   updateCount();
   setState("", "Ready", "单个地址下载 PDF，多个地址下载 ZIP。");
+});
+
+sampleUrlsEl.addEventListener("click", () => {
+  urlsEl.value = "https://time.geekbang.org/column/article/999533?screen=full";
+  updateCount();
+  setState("", "Ready", "已填入极客时间示例地址。");
+});
+
+jumpLogsEl.addEventListener("click", () => {
+  document.querySelector("#logPanel")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  logListEl.focus({ preventScroll: true });
+});
+
+document.querySelectorAll("[data-platform]").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-platform]").forEach((item) => item.classList.remove("active"));
+    button.classList.add("active");
+    platformValueEl.textContent = button.dataset.platform || "自动识别";
+  });
+});
+
+document.querySelectorAll("[data-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const view = button.dataset.view;
+    document.querySelectorAll("[data-view]").forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      if (active) item.setAttribute("aria-current", "page");
+      else item.removeAttribute("aria-current");
+    });
+    document.querySelectorAll("[data-view-panel]").forEach((panel) => {
+      panel.classList.toggle("active", panel.dataset.viewPanel === view);
+    });
+  });
 });
 
 updateCount();
