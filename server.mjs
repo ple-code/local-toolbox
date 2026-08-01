@@ -830,7 +830,7 @@ async function prepareManualLoginExport(req, res) {
     const agreement = await session.acceptLoginAgreement();
     if (isZsxqAuthenticatedLoginState(agreement, loginUrl)) {
       taskStore.updateTaskSync(taskId, {
-        status: "running",
+        status: "waiting_login",
         config: { manualLoginPhase: "authenticated" }
       });
       logStep("检测到已有知识星球登录态，跳过扫码确认", {
@@ -1011,7 +1011,7 @@ async function stopTask(req, res, taskId) {
 
   if (activeTaskId === taskId) {
     await session.close().catch(() => undefined);
-    if (task.status === "waiting_login" || queueIndex >= 0) {
+    if (task.status === "waiting_login" || task.config?.manualLoginPhase === "authenticated" || queueIndex >= 0) {
       releaseTaskLock(taskId);
       cancelledTaskIds.delete(taskId);
     }
