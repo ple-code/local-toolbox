@@ -14,7 +14,7 @@ fi
 
 for pid in $(pgrep -x node || true); do
   [[ -r "/proc/$pid/cmdline" ]] || continue
-  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  cmd="$(tr '\0' ' ' "/proc/$pid/cmdline" 2>/dev/null || true)"
   if [[ "$cmd" == *"./server.mjs"* ]]; then
     kill "$pid" || true
     echo "local-toolbox stopped stray node: $pid"
@@ -30,7 +30,7 @@ fi
 
 for pid in $(pgrep -x chrome || true); do
   [[ -r "/proc/$pid/cmdline" ]] || continue
-  cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+  cmd="$(tr '\0' ' ' "/proc/$pid/cmdline" 2>/dev/null || true)"
   if [[ "$cmd" == *"--user-data-dir=$HOME/apps/local-toolbox/.chrome-profile"* ]]; then
     kill "$pid" || true
     echo "local-toolbox stopped chrome: $pid"
