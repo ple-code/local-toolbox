@@ -29,6 +29,7 @@ const credentials = new CredentialStore({ dataDir });
 let exportInProgress = false;
 let nextLogId = 1;
 const runLogs = [];
+let activeLogScope = "system";
 
 const platforms = new Map([
   ["geektime", { key: "geektime", name: "极客时间", authMode: "credentials" }],
@@ -45,6 +46,7 @@ function logStep(message, meta = {}) {
   const entry = {
     id: nextLogId,
     time: new Date().toISOString(),
+    scope: activeLogScope,
     message,
     meta: sanitizeLogMeta(meta)
   };
@@ -66,6 +68,38 @@ function sameHostname(left, right) {
   } catch {
     return false;
   }
+}
+
+function samePlatformHost(platform, value) {
+  try {
+    const hostname = new URL(value).hostname;
+    if (platform.key === "geektime") {
+      return hostname.endsWith("geekbang.org");
+    }
+    if (platform.key === "zsxq") {
+      return hostname.endsWith("zsxq.com");
+    }
+    if (platform.key === "wechat") {
+      return hostname === "mp.weixin.qq.com";
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolveLoginUrlForPlatform(platform, explicitLoginUrl = "") {
+  const parsedExplicit = parseUrlList([explicitLoginUrl])[0];
+  if (parsedExplicit) {
+    return parsedExplicit;
+  }
+  if (platform.authMode === "credentials") {
+    return (await credentials.get(platform.key))?.loginUrl || "";
+  }
+  if (platform.authMode === "manual") {
+    return (await credentials.getLoginUrlMeta(platform.key))?.loginUrl || "";
+  }
+  return "";
 }
 
 function inferPlatformKey(urls) {
@@ -341,8 +375,24 @@ async function loginState(req, res) {
   json(res, 200, await session.getLoginState());
 }
 
-async function loginScreenshot(req, res) {
-  logStep("刷新登录页截图");
+async function loginScreenshot(req, res, searchParams = new URLSearchParams()) {
+  const platform = platformFromKey(searchParams.get("platform"));
+  if (platform.authMode === "none") {
+    throw new Error(`${platform.name}无需登录。`);
+  }
+  const expectedLoginUrl = await resolveLoginUrlForPlatform(platform, searchParams.get("loginUrl") || "");
+  const state = await session.getLoginState();
+  if (!state.open) {
+    throw new Error("没有打开中的登录页面。");
+  }
+  if (expectedLoginUrl && !samePlatformHost(platform, state.currentUrl || expectedLoginUrl)) {
+    throw new Error(`当前登录窗口不是${platform.name}登录页，请先打开${platform.name}登录窗口。`);
+  }
+  logStep("刷新登录页截图", {
+    platform: platform.name,
+    currentUrl: state.currentUrl,
+    expectedLoginUrl
+  });
   const image = await session.captureLoginScreenshot();
   res.writeHead(200, {
     "content-type": "image/png",
@@ -359,6 +409,8 @@ async function exportUrls(req, res) {
   }
 
   exportInProgress = true;
+  const previousLogScope = activeLogScope;
+  activeLogScope = "export";
   try {
     const body = await readJson(req);
     const urls = parseUrlList(body.urls || DEFAULT_URL);
@@ -466,6 +518,7 @@ async function exportUrls(req, res) {
   } finally {
     await session.close();
     logStep("导出任务结束，远程 Chrome 已关闭");
+    activeLogScope = previousLogScope;
     exportInProgress = false;
   }
 }
@@ -485,9 +538,11 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/api/logs") {
       const after = Number(url.searchParams.get("after") || 0);
+      const scope = String(url.searchParams.get("scope") || "").trim();
       json(res, 200, {
         ok: true,
-        logs: runLogs.filter((entry) => entry.id > after)
+        lastId: nextLogId - 1,
+        logs: runLogs.filter((entry) => entry.id > after && (!scope || entry.scope === scope))
       });
       return;
     }
@@ -517,7 +572,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/login-screenshot") {
-      await loginScreenshot(req, res);
+      await loginScreenshot(req, res, url.searchParams);
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/open-browser") {
@@ -535,7 +590,12 @@ const server = createServer(async (req, res) => {
     res.writeHead(405);
     res.end("Method not allowed");
   } catch (error) {
+    const previousLogScope = activeLogScope;
+    if (req.url?.startsWith("/api/export")) {
+      activeLogScope = "export";
+    }
     logStep("请求失败", { method: req.method, url: req.url, error: error.message || String(error) });
+    activeLogScope = previousLogScope;
     errorJson(res, 500, error);
   }
 });

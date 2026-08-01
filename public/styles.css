@@ -857,6 +857,14 @@ select {
   overflow-wrap: anywhere;
 }
 
+.log-message.has-meta {
+  cursor: pointer;
+}
+
+.log-message.has-meta:hover {
+  color: var(--surface);
+}
+
 .log-details {
   margin-left: 74px;
 }
@@ -875,7 +883,7 @@ select {
 }
 
 .log-meta {
-  margin: 4px 0 0;
+  margin: 6px 0 0 74px;
   color: rgba(255, 255, 255, 0.68);
   white-space: pre-wrap;
   overflow-wrap: anywhere;

@@ -69,6 +69,7 @@ let queueState = [];
 let logEntries = [];
 let logPage = 1;
 let currentConfigPlatformKey = "geektime";
+let taskLogActive = false;
 const logPageSize = 20;
 
 const stateTitleMap = new Map([
@@ -290,17 +291,26 @@ function renderLogs() {
     row.append(head);
 
     if (entry.meta && Object.keys(entry.meta).length) {
-      const details = document.createElement("details");
-      details.className = "log-details";
-
-      const summary = document.createElement("summary");
-      summary.textContent = "详情";
-
       const meta = document.createElement("pre");
       meta.className = "log-meta";
       meta.textContent = JSON.stringify(entry.meta, null, 2);
-      details.append(summary, meta);
-      row.append(details);
+      meta.hidden = true;
+      message.classList.add("has-meta");
+      message.tabIndex = 0;
+      message.setAttribute("role", "button");
+      message.title = "点击查看详情";
+      const toggleMeta = () => {
+        meta.hidden = !meta.hidden;
+        row.classList.toggle("open", !meta.hidden);
+      };
+      message.addEventListener("click", toggleMeta);
+      message.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleMeta();
+        }
+      });
+      row.append(meta);
     }
 
     fragment.append(row);
@@ -314,13 +324,35 @@ function renderLogs() {
   nextLogPageEl.disabled = logPage >= totalPages;
 }
 
+function clearLoginPreview() {
+  const oldSrc = loginScreenshotEl.src;
+  loginPreviewEl.hidden = true;
+  loginScreenshotEl.removeAttribute("src");
+  if (oldSrc?.startsWith("blob:")) {
+    URL.revokeObjectURL(oldSrc);
+  }
+}
+
 async function refreshLogs() {
-  const response = await fetch(`/api/logs?after=${lastLogId}`);
+  if (!taskLogActive) {
+    return;
+  }
+  const response = await fetch(`/api/logs?scope=export&after=${lastLogId}`);
   if (!response.ok) {
     return;
   }
   const data = await response.json().catch(() => ({}));
   appendLogs(data.logs || []);
+}
+
+async function primeTaskLogCursor() {
+  const response = await fetch("/api/logs?scope=export&after=0");
+  const data = await response.json().catch(() => ({}));
+  lastLogId = Number(data.lastId || 0);
+  logEntries = [];
+  logPage = 1;
+  taskLogActive = true;
+  renderLogs();
 }
 
 async function openLoginWindow() {
@@ -455,9 +487,18 @@ async function saveCredentials(event) {
 }
 
 async function refreshLoginPreview() {
-  const response = await fetch(`/api/login-screenshot?ts=${Date.now()}`);
+  const params = new URLSearchParams({
+    ts: String(Date.now()),
+    platform: currentConfigPlatformKey
+  });
+  const loginUrl = loginUrlEl.value.trim();
+  if (loginUrl) {
+    params.set("loginUrl", loginUrl);
+  }
+  const response = await fetch(`/api/login-screenshot?${params.toString()}`);
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
+    clearLoginPreview();
     throw new Error(data.error || `HTTP ${response.status}`);
   }
   const blob = await response.blob();
@@ -511,6 +552,13 @@ async function exportFiles() {
   }
 
   setBusy(true);
+  await primeTaskLogCursor().catch(() => {
+    lastLogId = 0;
+    logEntries = [];
+    logPage = 1;
+    taskLogActive = true;
+    renderLogs();
+  });
   downloadInfoEl.hidden = true;
   setState("busy", "Preparing", "先打开预热页，再按随机间隔打开导出页。");
   try {
@@ -701,6 +749,7 @@ function showPlatformConfig(platformName) {
     .find((row) => row.dataset.platformName === platformName);
   currentConfigPlatformKey = platformRow?.dataset.platformOption || currentConfigPlatformKey;
   const platform = platformCatalog.get(currentConfigPlatformKey);
+  clearLoginPreview();
   platformListViewEl.hidden = true;
   platformConfigViewEl.hidden = false;
   platformConfigTitleEl.textContent = `${platform?.name || platformName}配置`;
@@ -748,5 +797,5 @@ document.querySelectorAll("[data-view]").forEach((button) => {
 populatePlatformSelect();
 updateCount();
 renderLogs();
-loadHealth().then(() => refreshLogs().catch(() => undefined));
+loadHealth();
 startLogPolling();
