@@ -667,9 +667,9 @@ async function runExportTask({ taskId, urls, platform, delayRange }) {
   throwIfTaskCancelled(taskId);
   await ensureCredentialsForExport(platform);
   throwIfTaskCancelled(taskId);
-  await session.closeLoginTab();
   logStep("打开预热页面", { url: urls[0] });
   const warmupTab = await session.openWarmupTab(urls[0], { waitMs });
+  await session.closeLoginTab();
   let warmupClosed = false;
   const usedNames = new Set();
   const pdfs = [];
