@@ -153,42 +153,12 @@ svg {
   flex: 0 0 auto;
 }
 
-.sidebar-footer {
-  margin-top: auto;
-  display: grid;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-
-.machine-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.machine-row span {
-  color: var(--muted);
-}
-
-.machine-row strong {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .main {
   min-width: 0;
   height: 100vh;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 16px;
-  padding: 20px 24px;
+  grid-template-rows: minmax(0, 1fr);
+  padding: 24px 28px;
   overflow: hidden;
 }
 
@@ -282,7 +252,7 @@ h2 {
   min-height: 0;
   overflow: hidden;
   display: grid;
-  grid-template-columns: minmax(330px, 430px) minmax(430px, 1fr) minmax(320px, 392px);
+  grid-template-columns: minmax(360px, 470px) minmax(520px, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -950,12 +920,7 @@ select {
   }
 
   .workspace {
-    grid-template-columns: minmax(320px, 0.95fr) minmax(420px, 1fr);
-  }
-
-  .workspace > .stack:last-child {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: minmax(330px, 420px) minmax(430px, 1fr);
   }
 }
 
@@ -983,13 +948,9 @@ select {
     display: none;
   }
 
-  .sidebar-footer {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .main {
     height: auto;
-    min-height: calc(100vh - 151px);
+    min-height: calc(100vh - 137px);
     overflow: visible;
     padding: 16px;
   }
@@ -1000,8 +961,7 @@ select {
   }
 
   .workspace,
-  .admin-view.active,
-  .workspace > .stack:last-child {
+  .admin-view.active {
     display: grid;
     grid-template-columns: 1fr;
     overflow: visible;
@@ -1030,8 +990,7 @@ select {
 @media (max-width: 520px) {
   .top-actions,
   .button-row,
-  .login-actions,
-  .sidebar-footer {
+  .login-actions {
     display: grid;
     grid-template-columns: 1fr;
     width: 100%;

@@ -36,29 +36,20 @@
           </button>
         </nav>
 
-        <div class="sidebar-footer">
-          <div class="machine-row"><span>运行位置</span><strong id="hostMeta">e540</strong></div>
-          <div class="machine-row"><span>浏览器</span><strong>Chrome Remote</strong></div>
-          <div class="machine-row"><span>Profile</span><strong>.chrome-profile</strong></div>
+        <div class="runtime-sinks" hidden>
+          <strong id="hostMeta">e540</strong>
+          <span id="profileMeta">Profile loading</span>
+          <span id="credentialPill">凭证未配置</span>
+          <span id="servicePill"><span class="status-dot" id="serverStatus" aria-label="服务状态"></span><span id="serviceText">服务检测中</span></span>
+          <button type="button" id="jumpLogs">当前日志</button>
+          <span id="resultPill">暂无结果</span>
+          <table><tbody id="resultRows"></tbody></table>
+          <div id="downloadInfo" hidden><strong id="downloadName"></strong></div>
+          <span id="historyLatest">暂无下载结果</span>
         </div>
       </aside>
 
       <main class="main">
-        <header class="topbar">
-          <div class="page-title">
-            <h1>网页导出</h1>
-            <p id="profileMeta">Profile loading</p>
-          </div>
-          <div class="top-actions">
-            <span class="status-pill" id="credentialPill">凭证未配置</span>
-            <span class="status-pill service" id="servicePill"><span class="status-dot" id="serverStatus" aria-label="服务状态"></span><span id="serviceText">服务检测中</span></span>
-            <button class="button secondary compact" type="button" id="jumpLogs">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h4"/></svg>
-              当前日志
-            </button>
-          </div>
-        </header>
-
         <section class="workspace view active" data-view-panel="export" aria-label="网页导出">
           <div class="stack">
             <section class="panel" aria-labelledby="taskTitle">
@@ -78,23 +69,13 @@
                   <div class="hint">每行一个地址；单个地址下载 PDF，多个地址下载 ZIP。</div>
                 </div>
 
-                <div class="field-grid">
-                  <div class="field">
-                    <span class="field-label">平台策略</span>
-                    <div class="segmented" role="tablist" aria-label="平台策略">
-                      <button class="active" type="button" data-platform="自动识别">自动识别</button>
-                      <button type="button" data-platform="极客时间">极客时间</button>
-                      <button type="button" data-platform="通用网页">通用网页</button>
-                    </div>
-                  </div>
-                  <div class="field">
-                    <label for="pace">访问节奏</label>
-                    <select id="pace">
-                      <option>稳妥：随机等待 5-15 秒</option>
-                      <option>标准：随机等待 4-9 秒</option>
-                      <option>快速：随机等待 1-3 秒</option>
-                    </select>
-                  </div>
+                <div class="field">
+                  <label for="pace">访问节奏</label>
+                  <select id="pace">
+                    <option>稳妥：随机等待 5-15 秒</option>
+                    <option>标准：随机等待 4-9 秒</option>
+                    <option>快速：随机等待 1-3 秒</option>
+                  </select>
                 </div>
 
                 <div class="button-row">
@@ -102,49 +83,9 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v16l13-8Z"/></svg>
                     开始导出
                   </button>
-                  <button class="button secondary" id="openBrowser" type="button">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4v18h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>
-                    打开登录窗口
-                  </button>
                   <button class="button ghost" id="clear" type="button">清空</button>
                 </div>
               </div>
-            </section>
-
-            <section class="panel" aria-labelledby="loginTitle">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <h2 id="loginTitle">登录配置</h2>
-                  <span>极客时间账号与登录页</span>
-                </div>
-              </div>
-              <form class="panel-body credentials" id="credentialsForm">
-                <div class="field-grid">
-                  <div class="field">
-                    <label for="username">账号</label>
-                    <input id="username" autocomplete="username" placeholder="手机号或邮箱">
-                  </div>
-                  <div class="field">
-                    <label for="loginUrl">账密登录地址</label>
-                    <input id="loginUrl" autocomplete="off" placeholder="请输入账密登录地址">
-                  </div>
-                </div>
-                <div class="field">
-                  <label for="password">密码</label>
-                  <input id="password" type="password" autocomplete="current-password" placeholder="保存后不会回显">
-                </div>
-                <div class="login-actions">
-                  <button class="button secondary" id="autoLogin" type="button">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>
-                    自动登录
-                  </button>
-                  <button class="button secondary" id="saveCredentials" type="submit">
-                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M7 3v6h8"/><path d="M7 15h10"/></svg>
-                    保存账密
-                  </button>
-                </div>
-                <div class="credential-meta" id="credentialMeta">未配置账密</div>
-              </form>
             </section>
           </div>
 
@@ -218,54 +159,6 @@
                 <div class="queue" id="queueList"></div>
               </div>
             </section>
-          </div>
-
-          <div class="stack">
-            <section class="panel" aria-labelledby="platformTitle">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <h2 id="platformTitle">平台配置</h2>
-                  <span>后续平台扩展入口</span>
-                </div>
-              </div>
-              <div class="panel-body compact-body">
-                <div class="kv-row"><span>平台</span><strong id="platformValue">自动识别</strong></div>
-                <div class="kv-row"><span>登录域名</span><strong>account.geekbang.org</strong></div>
-                <div class="kv-row"><span>导出策略</span><strong>正文容器 + 滚动加载</strong></div>
-                <div class="kv-row"><span>输出格式</span><strong>PDF / ZIP</strong></div>
-                <div class="kv-row"><span>凭证存储</span><strong>SQLite 加密</strong></div>
-              </div>
-            </section>
-
-            <section class="panel" aria-labelledby="resultTitle">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <h2 id="resultTitle">下载结果</h2>
-                  <span>浏览器自动下载</span>
-                </div>
-                <span class="status-pill" id="resultPill">暂无结果</span>
-              </div>
-              <div class="table-wrap">
-                <table class="result-table">
-                  <thead>
-                    <tr>
-                      <th>文件</th>
-                      <th>类型</th>
-                      <th>大小</th>
-                    </tr>
-                  </thead>
-                  <tbody id="resultRows">
-                    <tr>
-                      <td colspan="3">本次任务还没有输出文件。</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="download" id="downloadInfo" hidden>
-                <span>Latest</span>
-                <strong id="downloadName"></strong>
-              </div>
-            </section>
 
             <section class="panel" aria-labelledby="logTitle" id="logPanel">
               <div class="panel-head">
@@ -295,10 +188,73 @@
           <section class="panel">
             <div class="panel-head"><div class="panel-title"><h2>极客时间配置</h2><span>当前默认平台</span></div></div>
             <div class="panel-body compact-body">
+              <div class="field">
+                <span class="field-label">平台策略</span>
+                <div class="segmented" role="tablist" aria-label="平台策略">
+                  <button class="active" type="button" data-platform="自动识别">自动识别</button>
+                  <button type="button" data-platform="极客时间">极客时间</button>
+                  <button type="button" data-platform="通用网页">通用网页</button>
+                </div>
+              </div>
+              <div class="kv-row"><span>当前平台</span><strong id="platformValue">自动识别</strong></div>
               <div class="kv-row"><span>登录页地址</span><strong id="platformLoginText">未读取</strong></div>
               <div class="kv-row"><span>浏览器 Profile</span><strong>.chrome-profile</strong></div>
               <div class="kv-row"><span>账号状态</span><strong id="platformCredentialText">未配置</strong></div>
               <div class="kv-row"><span>任务节奏</span><strong>5-15 秒随机间隔</strong></div>
+            </div>
+          </section>
+          <section class="panel" aria-labelledby="loginTitle">
+            <div class="panel-head">
+              <div class="panel-title">
+                <h2 id="loginTitle">登录配置</h2>
+                <span>极客时间账号与登录页</span>
+              </div>
+            </div>
+            <form class="panel-body credentials" id="credentialsForm">
+              <div class="field-grid">
+                <div class="field">
+                  <label for="username">账号</label>
+                  <input id="username" autocomplete="username" placeholder="手机号或邮箱">
+                </div>
+                <div class="field">
+                  <label for="loginUrl">账密登录地址</label>
+                  <input id="loginUrl" autocomplete="off" placeholder="请输入账密登录地址">
+                </div>
+              </div>
+              <div class="field">
+                <label for="password">密码</label>
+                <input id="password" type="password" autocomplete="current-password" placeholder="保存后不会回显">
+              </div>
+              <div class="login-actions">
+                <button class="button secondary" id="openBrowser" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h4v18h-4"/><path d="m10 17 5-5-5-5"/><path d="M15 12H3"/></svg>
+                  打开登录窗口
+                </button>
+                <button class="button secondary" id="autoLogin" type="button">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg>
+                  自动登录
+                </button>
+                <button class="button secondary" id="saveCredentials" type="submit">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M7 3v6h8"/><path d="M7 15h10"/></svg>
+                  保存账密
+                </button>
+              </div>
+              <div class="credential-meta" id="credentialMeta">未配置账密</div>
+            </form>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div class="panel-title"><h2>登录页截图</h2><span>远程浏览器人工确认</span></div></div>
+            <div class="panel-body">
+              <div class="login-preview platform-login-preview" id="loginPreview" hidden>
+                <div class="preview-head">
+                  <span>登录页截图</span>
+                  <button class="icon-button" id="refreshPreview" type="button" aria-label="刷新登录页截图" title="刷新登录页截图">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                  </button>
+                </div>
+                <img id="loginScreenshot" alt="远程浏览器登录页截图">
+              </div>
+              <div class="credential-meta">打开登录窗口或自动登录需要人工处理时，会在这里显示最近一次远程截图。</div>
             </div>
           </section>
         </section>
@@ -307,7 +263,7 @@
           <section class="panel">
             <div class="panel-head"><div class="panel-title"><h2>运行历史</h2><span>本版先展示当前会话结果</span></div></div>
             <div class="panel-body module-list">
-              <div class="module-row"><div><strong>最近下载</strong><span id="historyLatest">暂无下载结果</span></div><span class="status-pill">当前会话</span></div>
+              <div class="module-row"><div><strong>最近下载</strong><span>浏览器会在导出完成时自动弹出下载。</span></div><span class="status-pill">当前会话</span></div>
               <div class="module-row"><div><strong>日志归档</strong><span>服务端实时日志保留最近 50 条在页面展示</span></div><span class="status-pill">Live</span></div>
             </div>
           </section>
