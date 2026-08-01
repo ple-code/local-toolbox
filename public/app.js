@@ -63,13 +63,29 @@ const platformConfigViewEl = document.querySelector("#platformConfigView");
 const backToPlatformsEl = document.querySelector("#backToPlatforms");
 const platformConfigTitleEl = document.querySelector("#platformConfigTitle");
 const platformConfigCaptionEl = document.querySelector("#platformConfigCaption");
+const refreshTasksEl = document.querySelector("#refreshTasks");
+const taskHistoryListEl = document.querySelector("#taskHistoryList");
+const taskHistoryEmptyEl = document.querySelector("#taskHistoryEmpty");
+const taskHistoryPanelEl = document.querySelector("#taskHistoryPanel");
+const taskDetailPanelEl = document.querySelector("#taskDetailPanel");
+const taskDetailEl = document.querySelector("#taskDetail");
+const taskDetailSubtitleEl = document.querySelector("#taskDetailSubtitle");
+const downloadTaskFileEl = document.querySelector("#downloadTaskFile");
+const backToTaskHistoryEl = document.querySelector("#backToTaskHistory");
+const manualLoginPanelEl = document.querySelector("#manualLoginPanel");
+const manualLoginScreenshotEl = document.querySelector("#manualLoginScreenshot");
+const refreshManualLoginEl = document.querySelector("#refreshManualLogin");
+const continueManualLoginEl = document.querySelector("#continueManualLogin");
 let lastLogId = 0;
 let logPollTimer = 0;
 let queueState = [];
 let logEntries = [];
 let logPage = 1;
 let currentConfigPlatformKey = "geektime";
+let currentTaskId = "";
+let selectedHistoryTaskId = "";
 let taskLogActive = false;
+let pendingManualLoginTaskId = "";
 const logPageSize = 20;
 
 const stateTitleMap = new Map([
@@ -87,6 +103,8 @@ const stateTitleMap = new Map([
   ["Login Failed", "登录失败"],
   ["No URL", "缺少 URL"],
   ["Preparing", "正在准备"],
+  ["Queued", "排队中"],
+  ["Waiting Login", "等待扫码"],
   ["Downloading", "正在下载"],
   ["Downloaded", "下载完成"],
   ["Export Failed", "导出失败"],
@@ -124,6 +142,8 @@ function setBusy(isBusy) {
   clearEl.disabled = isBusy;
   saveCredentialsEl.disabled = isBusy || authMode === "none";
   refreshPreviewEl.disabled = isBusy || !canOpenLogin;
+  refreshManualLoginEl.disabled = !pendingManualLoginTaskId;
+  continueManualLoginEl.disabled = !pendingManualLoginTaskId;
 }
 
 function setState(kind, title, detail) {
@@ -158,7 +178,7 @@ function hostnameFromUrl(value) {
 function updateSteps(kind, title, detail = "") {
   const text = `${title} ${detail}`;
   let active = "ready";
-  if (/打开|浏览器|登录|准备|预热/i.test(text)) active = "open";
+  if (/排队|打开|浏览器|登录|扫码|准备|预热/i.test(text)) active = "open";
   if (/scroll|滚动|加载/i.test(text)) active = "scroll";
   if (/PDF|生成|下载/i.test(text)) active = "pdf";
   if (kind === "done" || /完成|已生成|已关闭|结束/i.test(text)) active = "done";
@@ -244,6 +264,33 @@ async function requestJson(url, payload) {
 function formatLogTime(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value || "-" : date.toLocaleString("zh-CN", { hour12: false });
+}
+
+function statusText(status) {
+  if (status === "succeeded") return "成功";
+  if (status === "failed") return "失败";
+  if (status === "running") return "执行中";
+  if (status === "queued") return "排队中";
+  if (status === "waiting_login") return "等待扫码";
+  return status || "未知";
+}
+
+function statusClass(status) {
+  if (status === "succeeded") return "ok";
+  if (status === "failed") return "error";
+  if (status === "running" || status === "queued" || status === "waiting_login") return "warn";
+  return "";
+}
+
+function createTaskId() {
+  return (crypto.randomUUID?.() || `task-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 80);
 }
 
 function appendLogs(entries) {
@@ -334,10 +381,10 @@ function clearLoginPreview() {
 }
 
 async function refreshLogs() {
-  if (!taskLogActive) {
+  if (!taskLogActive || !currentTaskId) {
     return;
   }
-  const response = await fetch(`/api/logs?scope=export&after=${lastLogId}`);
+  const response = await fetch(`/api/tasks/${encodeURIComponent(currentTaskId)}/logs?after=${lastLogId}`);
   if (!response.ok) {
     return;
   }
@@ -345,14 +392,61 @@ async function refreshLogs() {
   appendLogs(data.logs || []);
 }
 
-async function primeTaskLogCursor() {
-  const response = await fetch("/api/logs?scope=export&after=0");
-  const data = await response.json().catch(() => ({}));
-  lastLogId = Number(data.lastId || 0);
+function startTaskLogSession(taskId) {
+  currentTaskId = taskId;
+  lastLogId = 0;
   logEntries = [];
   logPage = 1;
   taskLogActive = true;
   renderLogs();
+}
+
+async function refreshManualLoginPreview() {
+  if (!pendingManualLoginTaskId) {
+    return;
+  }
+  const response = await fetch(`/api/login-screenshot?platform=zsxq&taskId=${encodeURIComponent(pendingManualLoginTaskId)}&ts=${Date.now()}`);
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  const blob = await response.blob();
+  const oldSrc = manualLoginScreenshotEl.src;
+  manualLoginScreenshotEl.src = URL.createObjectURL(blob);
+  if (oldSrc?.startsWith("blob:")) {
+    URL.revokeObjectURL(oldSrc);
+  }
+  manualLoginPanelEl.hidden = false;
+}
+
+function resetManualLoginPanel() {
+  pendingManualLoginTaskId = "";
+  const oldSrc = manualLoginScreenshotEl.src;
+  manualLoginPanelEl.hidden = true;
+  manualLoginScreenshotEl.removeAttribute("src");
+  if (oldSrc?.startsWith("blob:")) {
+    URL.revokeObjectURL(oldSrc);
+  }
+}
+
+async function downloadFromResponse(response, urlCount) {
+  setState("busy", "Downloading", `${urlCount} 个文件`);
+  const blob = await response.blob();
+  const fallback = urlCount === 1 ? "html2pdf-export.pdf" : "html2pdf-export.zip";
+  const filename = filenameFromDisposition(response.headers.get("content-disposition"), fallback);
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = href;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(href);
+
+  downloadInfoEl.hidden = false;
+  downloadNameEl.textContent = filename;
+  renderDownloadResult(filename, blob.size, urlCount);
+  setState("done", "Downloaded", `${Math.round(blob.size / 1024)} KB`);
 }
 
 async function openLoginWindow() {
@@ -552,46 +646,83 @@ async function exportFiles() {
   }
 
   setBusy(true);
-  await primeTaskLogCursor().catch(() => {
-    lastLogId = 0;
-    logEntries = [];
-    logPage = 1;
-    taskLogActive = true;
-    renderLogs();
-  });
+  resetManualLoginPanel();
+  const taskId = createTaskId();
+  startTaskLogSession(taskId);
   downloadInfoEl.hidden = true;
   setState("busy", "Preparing", "先打开预热页，再按随机间隔打开导出页。");
   try {
+    if (targetPlatformEl.value === "zsxq") {
+      const prepare = await requestJson("/api/export/prepare-login", {
+        taskId,
+        urls,
+        pace: paceEl.value,
+        platform: targetPlatformEl.value
+      });
+      pendingManualLoginTaskId = prepare.taskId || taskId;
+      setState("busy", "Waiting Login", "知识星球登录页已打开，请扫码后继续导出。");
+      try {
+        await refreshManualLoginPreview();
+      } catch (error) {
+        manualLoginPanelEl.hidden = false;
+        setState("error", "Preview Failed", `登录页已打开，但截图刷新失败：${error.message}`);
+      }
+      setBusy(true);
+      return;
+    }
+
     const response = await fetch("/api/export", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ urls, pace: paceEl.value, platform: targetPlatformEl.value })
+      body: JSON.stringify({ taskId, urls, pace: paceEl.value, platform: targetPlatformEl.value })
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${response.status}`);
     }
-
-    setState("busy", "Downloading", `${urls.length} 个文件`);
-    const blob = await response.blob();
-    const fallback = urls.length === 1 ? "html2pdf-export.pdf" : "html2pdf-export.zip";
-    const filename = filenameFromDisposition(response.headers.get("content-disposition"), fallback);
-    const href = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = href;
-    link.download = filename;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(href);
-
-    downloadInfoEl.hidden = false;
-    downloadNameEl.textContent = filename;
-    renderDownloadResult(filename, blob.size, urls.length);
-    setState("done", "Downloaded", `${Math.round(blob.size / 1024)} KB`);
+    await downloadFromResponse(response, urls.length);
+    loadTasks().catch(() => undefined);
   } catch (error) {
     setState("error", "Export Failed", error.message);
+    loadTasks().catch(() => undefined);
+    resetManualLoginPanel();
   } finally {
+    refreshLogs().catch(() => undefined);
+    if (!pendingManualLoginTaskId) {
+      setBusy(false);
+    }
+  }
+}
+
+async function continueManualLoginExport() {
+  if (!pendingManualLoginTaskId) {
+    return;
+  }
+  const taskId = pendingManualLoginTaskId;
+  const urls = parseUrls();
+  setState("busy", "Preparing", "已确认扫码，继续导出知识星球文章。");
+  setBusy(true);
+  continueManualLoginEl.disabled = true;
+  refreshManualLoginEl.disabled = true;
+  try {
+    const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}/continue`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({})
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+    await downloadFromResponse(response, Math.max(1, urls.length));
+    resetManualLoginPanel();
+    loadTasks().catch(() => undefined);
+  } catch (error) {
+    setState("error", "Export Failed", error.message);
+    resetManualLoginPanel();
+    loadTasks().catch(() => undefined);
+  } finally {
+    refreshLogs().catch(() => undefined);
     setBusy(false);
   }
 }
@@ -616,6 +747,208 @@ function renderDownloadResult(filename, size, urlCount) {
   row.append(file, kind, sizeCell);
   resultRowsEl.append(row);
   historyLatestEl.textContent = filename;
+}
+
+function appendKv(parent, label, value) {
+  const row = document.createElement("div");
+  row.className = "kv-row";
+  const key = document.createElement("span");
+  key.textContent = label;
+  const val = document.createElement("strong");
+  val.textContent = value || "-";
+  row.append(key, val);
+  parent.append(row);
+}
+
+function renderHistoryLogs(logs = []) {
+  const list = document.createElement("div");
+  list.className = "log-list history-log-list";
+  if (!logs.length) {
+    const empty = document.createElement("div");
+    empty.className = "credential-meta";
+    empty.textContent = "暂无任务日志";
+    return empty;
+  }
+
+  for (const entry of logs) {
+    const row = document.createElement("div");
+    row.className = "log-row";
+    const head = document.createElement("div");
+    head.className = "log-row-head";
+    const time = document.createElement("span");
+    time.className = "log-time";
+    time.textContent = formatLogTime(entry.time);
+    const message = document.createElement("span");
+    message.className = "log-message";
+    message.textContent = entry.message || "";
+    head.append(time, message);
+    row.append(head);
+    if (entry.meta && Object.keys(entry.meta).length) {
+      const meta = document.createElement("pre");
+      meta.className = "log-meta";
+      meta.hidden = true;
+      meta.textContent = JSON.stringify(entry.meta, null, 2);
+      message.classList.add("has-meta");
+      message.title = "点击查看详情";
+      message.addEventListener("click", () => {
+        meta.hidden = !meta.hidden;
+      });
+      row.append(meta);
+    }
+    list.append(row);
+  }
+  return list;
+}
+
+function renderTaskDetail(task, logs = []) {
+  selectedHistoryTaskId = task.id;
+  taskDetailSubtitleEl.textContent = `${task.platformName} · ${statusText(task.status)}`;
+  downloadTaskFileEl.hidden = !(task.status === "succeeded" && task.result?.outputPath);
+  taskDetailEl.replaceChildren();
+
+  const summary = document.createElement("div");
+  summary.className = "task-detail-grid";
+  appendKv(summary, "任务 ID", task.id);
+  appendKv(summary, "平台", task.platformName);
+  appendKv(summary, "状态", statusText(task.status));
+  appendKv(summary, "创建时间", formatDateTime(task.createdAt));
+  appendKv(summary, "完成时间", formatDateTime(task.finishedAt));
+  appendKv(summary, "文件", task.result?.filename || "无");
+  appendKv(summary, "大小", task.result?.sizeKb ? `${task.result.sizeKb} KB` : "-");
+  appendKv(summary, "错误", task.errorMessage || "-");
+
+  const urls = document.createElement("div");
+  urls.className = "task-section";
+  const urlsTitle = document.createElement("h3");
+  urlsTitle.textContent = "原始链接";
+  const urlList = document.createElement("div");
+  urlList.className = "task-url-list";
+  for (const url of task.rawUrls || []) {
+    const item = document.createElement("code");
+    item.textContent = url;
+    urlList.append(item);
+  }
+  urls.append(urlsTitle, urlList);
+
+  const config = document.createElement("div");
+  config.className = "task-section";
+  const configTitle = document.createElement("h3");
+  configTitle.textContent = "任务配置";
+  const configBody = document.createElement("pre");
+  configBody.className = "task-json";
+  configBody.textContent = JSON.stringify(task.config || {}, null, 2);
+  config.append(configTitle, configBody);
+
+  const logSection = document.createElement("div");
+  logSection.className = "task-section task-log-panel";
+  const logHead = document.createElement("div");
+  logHead.className = "task-section-head";
+  const logTitle = document.createElement("h3");
+  logTitle.textContent = "任务日志";
+  const fullscreen = document.createElement("button");
+  fullscreen.className = "icon-button";
+  fullscreen.type = "button";
+  fullscreen.title = "日志全屏";
+  fullscreen.setAttribute("aria-label", "日志全屏");
+  fullscreen.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+  fullscreen.addEventListener("click", () => {
+    logSection.classList.toggle("fullscreen");
+    const isFullscreen = logSection.classList.contains("fullscreen");
+    fullscreen.title = isFullscreen ? "退出全屏" : "日志全屏";
+    fullscreen.setAttribute("aria-label", fullscreen.title);
+  });
+  logHead.append(logTitle, fullscreen);
+  logSection.append(logHead, renderHistoryLogs(logs));
+
+  taskDetailEl.append(summary, urls, config, logSection);
+}
+
+async function loadTaskDetail(taskId) {
+  const [taskResponse, logResponse] = await Promise.all([
+    fetch(`/api/tasks/${encodeURIComponent(taskId)}`),
+    fetch(`/api/tasks/${encodeURIComponent(taskId)}/logs?limit=500`)
+  ]);
+  const taskData = await taskResponse.json().catch(() => ({}));
+  const logData = await logResponse.json().catch(() => ({}));
+  if (!taskResponse.ok) {
+    throw new Error(taskData.error || `HTTP ${taskResponse.status}`);
+  }
+  renderTaskDetail(taskData.task, logData.logs || []);
+  taskHistoryPanelEl.hidden = true;
+  taskDetailPanelEl.hidden = false;
+}
+
+function retryTask(task) {
+  document.querySelector('[data-view="export"]')?.click();
+  targetPlatformEl.value = task.platformKey || "generic";
+  urlsEl.value = (task.rawUrls?.length ? task.rawUrls : task.normalizedUrls || []).join("\n");
+  updateCount();
+  resetManualLoginPanel();
+  setState("", "Ready", "已从历史任务填入原始链接，可以重新导出。");
+}
+
+function renderTaskHistory(tasks = []) {
+  taskHistoryListEl.replaceChildren();
+  taskHistoryEmptyEl.hidden = tasks.length > 0;
+  for (const task of tasks) {
+    const row = document.createElement("div");
+    row.className = "task-history-row";
+
+    const main = document.createElement("div");
+    main.className = "task-history-main";
+    const title = document.createElement("strong");
+    title.textContent = `${task.platformName} · ${task.rawUrls?.length || 0} 个 URL`;
+    const meta = document.createElement("span");
+    const fileName = task.result?.filename;
+    const tail = fileName ? `文件：${fileName}` : (task.errorMessage || task.id);
+    meta.textContent = `${formatDateTime(task.createdAt)} · ${tail}`;
+    main.append(title, meta);
+
+    const status = document.createElement("span");
+    status.className = `status-pill ${statusClass(task.status)}`.trim();
+    status.textContent = statusText(task.status);
+
+    const detail = document.createElement("button");
+    detail.className = "button secondary compact";
+    detail.type = "button";
+    detail.textContent = "详情";
+    detail.addEventListener("click", () => {
+      loadTaskDetail(task.id).catch((error) => {
+        taskDetailEl.textContent = error.message;
+      });
+    });
+
+    const download = document.createElement("button");
+    download.className = "button primary compact";
+    download.type = "button";
+    download.textContent = "下载";
+    download.hidden = !(task.status === "succeeded" && task.result?.outputPath);
+    download.addEventListener("click", () => {
+      window.location.href = `/api/tasks/${encodeURIComponent(task.id)}/download`;
+    });
+
+    const retry = document.createElement("button");
+    retry.className = "button secondary compact";
+    retry.type = "button";
+    retry.textContent = "重试";
+    retry.hidden = task.status !== "failed";
+    retry.addEventListener("click", () => retryTask(task));
+
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    actions.append(status, detail, download, retry);
+    row.append(main, actions);
+    taskHistoryListEl.append(row);
+  }
+}
+
+async function loadTasks() {
+  const response = await fetch("/api/tasks?limit=50");
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || `HTTP ${response.status}`);
+  }
+  renderTaskHistory(data.tasks || []);
 }
 
 async function loadHealth() {
@@ -698,6 +1031,41 @@ toggleLogFullscreenEl.addEventListener("click", () => {
   toggleLogFullscreenEl.title = isFullscreen ? "退出全屏" : "日志全屏";
   toggleLogFullscreenEl.setAttribute("aria-label", toggleLogFullscreenEl.title);
 });
+
+refreshTasksEl.addEventListener("click", () => {
+  taskHistoryPanelEl.hidden = false;
+  taskDetailPanelEl.hidden = true;
+  loadTasks().catch((error) => {
+    taskHistoryEmptyEl.hidden = false;
+    taskHistoryEmptyEl.textContent = error.message;
+  });
+});
+
+downloadTaskFileEl.addEventListener("click", () => {
+  if (!selectedHistoryTaskId) {
+    return;
+  }
+  window.location.href = `/api/tasks/${encodeURIComponent(selectedHistoryTaskId)}/download`;
+});
+
+backToTaskHistoryEl.addEventListener("click", () => {
+  taskDetailPanelEl.hidden = true;
+  taskHistoryPanelEl.hidden = false;
+});
+
+refreshManualLoginEl.addEventListener("click", async () => {
+  setBusy(true);
+  try {
+    await refreshManualLoginPreview();
+    setState("busy", "Waiting Login", "二维码截图已刷新，扫码后继续导出。");
+  } catch (error) {
+    setState("error", "Preview Failed", error.message);
+  } finally {
+    setBusy(Boolean(pendingManualLoginTaskId));
+  }
+});
+
+continueManualLoginEl.addEventListener("click", continueManualLoginExport);
 
 function populatePlatformSelect() {
   const platformRows = [...document.querySelectorAll("[data-platform-option]")].filter((row) => row.dataset.platformAvailable === "true");
@@ -791,6 +1159,14 @@ document.querySelectorAll("[data-view]").forEach((button) => {
     if (view === "platforms") {
       showPlatformList();
     }
+    if (view === "history") {
+      taskHistoryPanelEl.hidden = false;
+      taskDetailPanelEl.hidden = true;
+      loadTasks().catch((error) => {
+        taskHistoryEmptyEl.hidden = false;
+        taskHistoryEmptyEl.textContent = error.message;
+      });
+    }
   });
 });
 
@@ -798,4 +1174,5 @@ populatePlatformSelect();
 updateCount();
 renderLogs();
 loadHealth();
+loadTasks().catch(() => undefined);
 startLogPolling();

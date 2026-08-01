@@ -25,6 +25,10 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></svg>
             <span>平台配置</span>
           </button>
+          <button class="nav-item" type="button" data-view="history">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8v5l3 2"/><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v5h5"/></svg>
+            <span>历史任务</span>
+          </button>
         </nav>
 
         <div class="runtime-sinks" hidden>
@@ -126,6 +130,20 @@
                   <div class="step" data-step="scroll"><span>03</span><strong>滚动加载</strong></div>
                   <div class="step" data-step="pdf"><span>04</span><strong>生成 PDF</strong></div>
                   <div class="step" data-step="done"><span>05</span><strong>完成</strong></div>
+                </div>
+
+                <div class="manual-login-panel" id="manualLoginPanel" hidden>
+                  <div class="manual-login-copy">
+                    <strong>微信扫码登录</strong>
+                    <span>扫码完成后点击继续导出。</span>
+                  </div>
+                  <div class="manual-login-preview">
+                    <img id="manualLoginScreenshot" alt="知识星球登录二维码截图">
+                  </div>
+                  <div class="button-row">
+                    <button class="button secondary" id="refreshManualLogin" type="button">刷新二维码</button>
+                    <button class="button primary" id="continueManualLogin" type="button">我已扫码，继续导出</button>
+                  </div>
                 </div>
 
                 <div class="run-log-panel" id="logPanel">
@@ -255,12 +273,28 @@
           </section>
         </section>
 
-        <section class="admin-view view" data-view-panel="history" aria-label="历史记录">
-          <section class="panel">
-            <div class="panel-head"><div class="panel-title"><h2>运行历史</h2><span>本版先展示当前会话结果</span></div></div>
-            <div class="panel-body module-list">
-              <div class="module-row"><div><strong>最近下载</strong><span>浏览器会在导出完成时自动弹出下载。</span></div><span class="status-pill">当前会话</span></div>
-              <div class="module-row"><div><strong>日志归档</strong><span>服务端实时日志保留最近 300 条，前端分页查看</span></div><span class="status-pill">实时</span></div>
+        <section class="admin-view view history-view" data-view-panel="history" aria-label="历史任务">
+          <section class="panel" id="taskHistoryPanel">
+            <div class="panel-head">
+              <div class="panel-title"><h2>历史任务</h2><span>SQLite 中保存的导出任务</span></div>
+              <button class="button secondary compact" type="button" id="refreshTasks">刷新</button>
+            </div>
+            <div class="panel-body">
+              <div class="task-history-list" id="taskHistoryList"></div>
+              <div class="log-empty" id="taskHistoryEmpty">暂无历史任务</div>
+            </div>
+          </section>
+
+          <section class="panel" id="taskDetailPanel" hidden>
+            <div class="panel-head">
+              <div class="panel-title"><h2>任务详情</h2><span id="taskDetailSubtitle">选择一个任务查看详情</span></div>
+              <div class="row-actions">
+                <button class="button ghost compact" type="button" id="backToTaskHistory">返回列表</button>
+                <button class="button primary compact" type="button" id="downloadTaskFile" hidden>下载文件</button>
+              </div>
+            </div>
+            <div class="panel-body task-detail" id="taskDetail">
+              <div class="credential-meta">点击左侧任务的详情按钮。</div>
             </div>
           </section>
         </section>
