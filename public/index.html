@@ -46,6 +46,9 @@
           <table><tbody id="resultRows"></tbody></table>
           <div id="downloadInfo" hidden><strong id="downloadName"></strong></div>
           <span id="historyLatest">暂无下载结果</span>
+          <span id="previewUrl">等待 URL</span>
+          <span id="previewSkeleton"></span>
+          <span id="captureTag">预览未开始</span>
         </div>
       </aside>
 
@@ -116,33 +119,13 @@
                   <div class="step" data-step="done"><span>05</span><strong>完成</strong></div>
                 </div>
 
-                <div class="preview-frame" aria-label="页面预览">
-                  <div class="browser-bar">
-                    <span class="browser-dot"></span>
-                    <span class="browser-dot"></span>
-                    <span class="browser-dot"></span>
-                    <span id="previewUrl">time.geekbang.org/column/article/999533</span>
+                <div class="run-log-panel" id="logPanel">
+                  <div class="run-log-head">
+                    <strong>实时日志</strong>
+                    <span>最近 50 条</span>
                   </div>
-                  <div class="login-preview" id="loginPreview" hidden>
-                    <div class="preview-head">
-                      <span>登录页截图</span>
-                      <button class="icon-button" id="refreshPreview" type="button" aria-label="刷新登录页截图" title="刷新登录页截图">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
-                      </button>
-                    </div>
-                    <img id="loginScreenshot" alt="远程浏览器登录页截图">
-                  </div>
-                  <div class="preview-skeleton" id="previewSkeleton">
-                    <span class="skeleton-line short"></span>
-                    <span class="skeleton-line wide"></span>
-                    <span class="skeleton-line mid"></span>
-                    <span class="skeleton-line wide"></span>
-                    <span class="skeleton-line wide"></span>
-                    <span class="skeleton-line mid"></span>
-                    <span class="skeleton-line wide"></span>
-                    <span class="skeleton-line short"></span>
-                  </div>
-                  <span class="capture-tag" id="captureTag">预览未开始</span>
+                  <div class="log-empty" id="logEmpty">暂无日志</div>
+                  <div class="log-list" id="logList" aria-live="polite" tabindex="0"></div>
                 </div>
               </div>
             </section>
@@ -160,19 +143,6 @@
               </div>
             </section>
 
-            <section class="panel" aria-labelledby="logTitle" id="logPanel">
-              <div class="panel-head">
-                <div class="panel-title">
-                  <h2 id="logTitle">实时日志</h2>
-                  <span>最近 50 条</span>
-                </div>
-                <span class="chip">Live</span>
-              </div>
-              <div class="panel-body">
-                <div class="log-empty" id="logEmpty">暂无日志</div>
-                <div class="log-list" id="logList" aria-live="polite" tabindex="0"></div>
-              </div>
-            </section>
           </div>
         </section>
 
