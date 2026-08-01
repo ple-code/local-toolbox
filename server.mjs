@@ -53,6 +53,14 @@ function logStep(message, meta = {}) {
 
 const session = new ChromePdfSession({ profileDir, waitMs, keepBrowser: false, log: logStep });
 
+function isAccountUrl(value) {
+  try {
+    return new URL(value).hostname === "account.geekbang.org";
+  } catch {
+    return false;
+  }
+}
+
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -167,7 +175,7 @@ async function autoLogin(req, res) {
     loginUrl,
     waitMs
   });
-  const needsManualAction = result.needsManualAction || !result.submitted;
+  const needsManualAction = !result.submitted || (result.needsManualAction && isAccountUrl(result.currentUrl || loginUrl));
   if (!needsManualAction) {
     logStep("自动登录结束，关闭远程 Chrome", {
       currentUrl: result.currentUrl,
