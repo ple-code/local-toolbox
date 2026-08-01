@@ -35,6 +35,7 @@ const runLogs = [];
 let activeLogScope = "system";
 let activeTaskId = undefined;
 const pendingTaskIds = [];
+const cancelledTaskIds = new Set();
 
 const platforms = new Map([
   ["geektime", { key: "geektime", name: "极客时间", authMode: "credentials" }],
@@ -272,8 +273,10 @@ async function waitForTaskTurn(taskId) {
   }
   try {
     while (exportInProgress || (pendingTaskIds.length && pendingTaskIds[0] !== taskId)) {
+      throwIfTaskCancelled(taskId);
       await sleep(1000);
     }
+    throwIfTaskCancelled(taskId);
     if (pendingTaskIds[0] === taskId) {
       pendingTaskIds.shift();
     }
@@ -287,6 +290,43 @@ async function waitForTaskTurn(taskId) {
     }
     throw error;
   }
+}
+
+class TaskCancelledError extends Error {
+  constructor(message = "任务已手动停止。") {
+    super(message);
+    this.name = "TaskCancelledError";
+  }
+}
+
+function isTaskCancelled(taskId) {
+  return Boolean(taskId && cancelledTaskIds.has(taskId));
+}
+
+function throwIfTaskCancelled(taskId) {
+  if (isTaskCancelled(taskId)) {
+    throw new TaskCancelledError();
+  }
+}
+
+async function cancellableSleep(ms, taskId) {
+  const end = Date.now() + Math.max(0, ms);
+  while (Date.now() < end) {
+    throwIfTaskCancelled(taskId);
+    await sleep(Math.min(500, end - Date.now()));
+  }
+  throwIfTaskCancelled(taskId);
+}
+
+function markTaskError(taskId, error, resultSummary = {}) {
+  if (!taskId) {
+    return;
+  }
+  if (error instanceof TaskCancelledError || isTaskCancelled(taskId)) {
+    taskStore.cancelTaskSync(taskId, error?.message || "任务已手动停止。", resultSummary);
+    return;
+  }
+  taskStore.failTaskSync(taskId, error, resultSummary);
 }
 
 const contentTypes = new Map([
@@ -624,7 +664,9 @@ async function ensureCredentialsForExport(platform) {
 }
 
 async function runExportTask({ taskId, urls, platform, delayRange }) {
+  throwIfTaskCancelled(taskId);
   await ensureCredentialsForExport(platform);
+  throwIfTaskCancelled(taskId);
   await session.closeLoginTab();
   logStep("打开预热页面", { url: urls[0] });
   const warmupTab = await session.openWarmupTab(urls[0], { waitMs });
@@ -633,12 +675,14 @@ async function runExportTask({ taskId, urls, platform, delayRange }) {
   const pdfs = [];
   try {
     for (const url of urls) {
+      throwIfTaskCancelled(taskId);
       const delayMs = randomDelayMs(delayRange.minMs, delayRange.maxMs);
       const delaySeconds = (delayMs / 1000).toFixed(1);
       logStep(`等待随机间隔 ${delaySeconds} 秒后打开导出页面`, { url, delayMs, delaySeconds });
-      await sleep(delayMs);
+      await cancellableSleep(delayMs, taskId);
       logStep("开始生成 PDF", { url });
       const result = await session.pdfForUrl(url, { waitMs, platform: platform.key, returnPageInfo: true });
+      throwIfTaskCancelled(taskId);
       const data = Buffer.isBuffer(result) ? result : result.pdf;
       const pageTitle = Buffer.isBuffer(result) ? "" : result.pageInfo?.title || "";
       if (!warmupClosed) {
@@ -728,7 +772,7 @@ async function exportUrls(req, res) {
   } catch (error) {
     if (taskId) {
       logStep("导出任务失败", { error: error.message || String(error) });
-      taskStore.failTaskSync(taskId, error, resultSummary);
+      markTaskError(taskId, error, resultSummary);
     }
     throw error;
   } finally {
@@ -736,6 +780,7 @@ async function exportUrls(req, res) {
     logStep("导出任务结束，远程 Chrome 已关闭");
     activeLogScope = previousLogScope;
     releaseTaskLock(taskId);
+    cancelledTaskIds.delete(taskId);
   }
 }
 
@@ -784,7 +829,7 @@ async function prepareManualLoginExport(req, res) {
   } catch (error) {
     if (taskId) {
       logStep("知识星球扫码准备失败", { error: error.message || String(error) });
-      taskStore.failTaskSync(taskId, error);
+      markTaskError(taskId, error);
     }
     await session.close();
     releaseTaskLock(taskId);
@@ -828,13 +873,14 @@ async function continueManualLoginExport(req, res, taskId) {
     await sendExportResult(res, taskId, pdfs);
   } catch (error) {
     logStep("导出任务失败", { error: error.message || String(error) });
-    taskStore.failTaskSync(taskId, error, resultSummary);
+    markTaskError(taskId, error, resultSummary);
     throw error;
   } finally {
     await session.close();
     logStep("导出任务结束，远程 Chrome 已关闭");
     activeLogScope = previousLogScope;
     releaseTaskLock(taskId);
+    cancelledTaskIds.delete(taskId);
   }
 }
 
@@ -898,6 +944,48 @@ async function downloadTaskOutput(req, res, taskId) {
   res.end(file);
 }
 
+async function stopTask(req, res, taskId) {
+  await taskStore.init();
+  const task = taskStore.getTaskSync(taskId);
+  if (!task) {
+    errorJson(res, 404, new Error("任务不存在。"));
+    return;
+  }
+  if (!["queued", "running", "waiting_login"].includes(task.status)) {
+    errorJson(res, 409, new Error("只有排队中、执行中或等待扫码的任务可以停止。"));
+    return;
+  }
+
+  cancelledTaskIds.add(taskId);
+  const queueIndex = pendingTaskIds.indexOf(taskId);
+  if (queueIndex >= 0) {
+    pendingTaskIds.splice(queueIndex, 1);
+  }
+
+  const reason = "任务已手动停止。";
+  taskStore.cancelTaskSync(taskId, reason, task.result || {});
+  logTaskStep(taskId, "任务已手动停止", {
+    previousStatus: task.status,
+    active: activeTaskId === taskId
+  });
+
+  if (activeTaskId === taskId) {
+    await session.close().catch(() => undefined);
+    if (task.status === "waiting_login" || queueIndex >= 0) {
+      releaseTaskLock(taskId);
+      cancelledTaskIds.delete(taskId);
+    }
+  } else {
+    cancelledTaskIds.delete(taskId);
+  }
+
+  json(res, 200, {
+    ok: true,
+    taskId,
+    status: "cancelled"
+  });
+}
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
@@ -940,6 +1028,11 @@ const server = createServer(async (req, res) => {
     const taskDownloadMatch = /^\/api\/tasks\/([^/]+)\/download$/.exec(url.pathname);
     if (taskDownloadMatch && req.method === "GET") {
       await downloadTaskOutput(req, res, decodeURIComponent(taskDownloadMatch[1]));
+      return;
+    }
+    const taskStopMatch = /^\/api\/tasks\/([^/]+)\/stop$/.exec(url.pathname);
+    if (taskStopMatch && req.method === "POST") {
+      await stopTask(req, res, decodeURIComponent(taskStopMatch[1]));
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/credentials/geektime") {

@@ -459,6 +459,16 @@ select {
   border-color: var(--line);
 }
 
+.button.danger {
+  color: #b4232c;
+  background: #fff6f6;
+  border-color: #f3b4b9;
+}
+
+.button.danger:hover {
+  background: #ffecec;
+}
+
 .button.ghost {
   color: var(--muted);
   background: transparent;

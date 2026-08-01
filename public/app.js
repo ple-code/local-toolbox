@@ -274,6 +274,7 @@ function formatDateTime(value) {
 function statusText(status) {
   if (status === "succeeded") return "成功";
   if (status === "failed") return "失败";
+  if (status === "cancelled") return "已停止";
   if (status === "running") return "执行中";
   if (status === "queued") return "排队中";
   if (status === "waiting_login") return "等待扫码";
@@ -283,8 +284,13 @@ function statusText(status) {
 function statusClass(status) {
   if (status === "succeeded") return "ok";
   if (status === "failed") return "error";
+  if (status === "cancelled") return "error";
   if (status === "running" || status === "queued" || status === "waiting_login") return "warn";
   return "";
+}
+
+function canStopTask(task) {
+  return ["queued", "running", "waiting_login"].includes(task?.status);
 }
 
 function createTaskId() {
@@ -887,6 +893,23 @@ function retryTask(task) {
   setState("", "Ready", "已从历史任务填入原始链接，可以重新导出。");
 }
 
+async function stopHistoryTask(task) {
+  if (!canStopTask(task)) {
+    return;
+  }
+  await requestJson(`/api/tasks/${encodeURIComponent(task.id)}/stop`, {});
+  if (currentTaskId === task.id) {
+    resetManualLoginPanel();
+    setBusy(false);
+    setState("error", "Export Failed", "任务已手动停止。");
+    refreshLogs().catch(() => undefined);
+  }
+  await loadTasks();
+  if (selectedHistoryTaskId === task.id && !taskDetailPanelEl.hidden) {
+    await loadTaskDetail(task.id);
+  }
+}
+
 function renderTaskHistory(tasks = []) {
   taskHistoryListEl.replaceChildren();
   taskHistoryEmptyEl.hidden = tasks.length > 0;
@@ -934,9 +957,25 @@ function renderTaskHistory(tasks = []) {
     retry.hidden = task.status !== "failed";
     retry.addEventListener("click", () => retryTask(task));
 
+    const stop = document.createElement("button");
+    stop.className = "button danger compact";
+    stop.type = "button";
+    stop.textContent = "停止";
+    stop.hidden = !canStopTask(task);
+    stop.addEventListener("click", async () => {
+      stop.disabled = true;
+      try {
+        await stopHistoryTask(task);
+      } catch (error) {
+        stop.disabled = false;
+        taskHistoryEmptyEl.hidden = false;
+        taskHistoryEmptyEl.textContent = error.message;
+      }
+    });
+
     const actions = document.createElement("div");
     actions.className = "row-actions";
-    actions.append(status, detail, download, retry);
+    actions.append(status, detail, download, retry, stop);
     row.append(main, actions);
     taskHistoryListEl.append(row);
   }
