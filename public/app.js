@@ -135,7 +135,11 @@ async function openLoginWindow() {
       loginUrl: loginUrlEl.value.trim()
     });
     setState("done", "Chrome Ready", result.openedUrl);
-    await refreshLoginPreview();
+    try {
+      await refreshLoginPreview();
+    } catch (error) {
+      setState("done", "Chrome Ready", `登录页已打开；截图刷新失败：${error.message}`);
+    }
   } catch (error) {
     setState("error", "Open Failed", error.message);
   } finally {
@@ -157,8 +161,13 @@ async function saveCredentials(event) {
   event.preventDefault();
   const username = usernameEl.value.trim();
   const password = passwordEl.value;
+  const loginUrl = loginUrlEl.value.trim();
   if (!username || !password) {
     setState("error", "Missing Credentials", "账号和密码都需要填写。");
+    return;
+  }
+  if (!loginUrl) {
+    setState("error", "Missing Login URL", "请填写账密登录地址。");
     return;
   }
 
@@ -168,7 +177,7 @@ async function saveCredentials(event) {
     const meta = await requestJson("/api/credentials/geektime", {
       username,
       password,
-      loginUrl: loginUrlEl.value.trim()
+      loginUrl
     });
     passwordEl.value = "";
     renderCredentialMeta(meta);

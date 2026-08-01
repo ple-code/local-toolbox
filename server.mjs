@@ -7,7 +7,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ChromePdfSession,
-  DEFAULT_LOGIN_URL,
   DEFAULT_URL,
   parseUrlList,
   pdfFilenameForUrl,
@@ -112,7 +111,13 @@ async function serveStatic(req, res) {
 
 async function openForLogin(req, res) {
   const body = await readJson(req);
-  const loginUrl = body.loginUrl ? parseUrlList([body.loginUrl])[0] : DEFAULT_LOGIN_URL;
+  const credential = await credentials.get("geektime");
+  const configuredLoginUrl = credential?.loginUrl || "";
+  const rawLoginUrl = body.loginUrl || configuredLoginUrl;
+  if (!rawLoginUrl) {
+    throw new Error("没有找到登录地址，请先填写账密登录地址。");
+  }
+  const loginUrl = parseUrlList([rawLoginUrl])[0];
   logStep("打开登录窗口", { loginUrl });
   await session.openForLogin(loginUrl, { waitMs });
   logStep("登录窗口已打开", { loginUrl, profileDir });
@@ -129,14 +134,18 @@ async function credentialMeta(req, res) {
 
 async function saveCredential(req, res) {
   const body = await readJson(req);
+  if (!body.loginUrl) {
+    throw new Error("没有找到登录地址，请填写账密登录地址。");
+  }
+  const loginUrl = parseUrlList([body.loginUrl])[0];
   logStep("保存极客时间账密配置", {
     username: body.username,
-    loginUrl: body.loginUrl || DEFAULT_LOGIN_URL
+    loginUrl
   });
   await credentials.save("geektime", {
     username: body.username,
     password: body.password,
-    loginUrl: body.loginUrl
+    loginUrl
   });
   json(res, 200, await credentials.getMeta("geektime"));
 }
@@ -147,7 +156,10 @@ async function autoLogin(req, res) {
   if (!credential) {
     throw new Error("还没有保存极客时间账号密码。");
   }
-  const loginUrl = credential.loginUrl || DEFAULT_LOGIN_URL;
+  if (!credential.loginUrl) {
+    throw new Error("没有找到登录地址，请先填写账密登录地址。");
+  }
+  const loginUrl = parseUrlList([credential.loginUrl])[0];
   logStep("读取到登录配置", { username: credential.username, loginUrl });
   const result = await session.autoLogin({
     username: credential.username,
@@ -155,7 +167,8 @@ async function autoLogin(req, res) {
     loginUrl,
     waitMs
   });
-  if (!result.needsManualAction) {
+  const needsManualAction = result.needsManualAction || !result.submitted;
+  if (!needsManualAction) {
     logStep("自动登录结束，关闭远程 Chrome", {
       currentUrl: result.currentUrl,
       submitted: result.submitted,
@@ -175,7 +188,7 @@ async function autoLogin(req, res) {
     currentUrl: result.currentUrl,
     title: result.title,
     submitted: result.submitted,
-    needsManualAction: result.needsManualAction,
+    needsManualAction,
     reason: result.reason
   });
 }
