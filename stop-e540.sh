@@ -13,6 +13,7 @@ if [[ -f .local-toolbox/server.pid ]]; then
 fi
 
 for pid in $(pgrep -x node || true); do
+  [[ -r "/proc/$pid/cmdline" ]] || continue
   cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
   if [[ "$cmd" == *"./server.mjs"* ]]; then
     kill "$pid" || true
@@ -28,6 +29,7 @@ if command -v lsof >/dev/null 2>&1; then
 fi
 
 for pid in $(pgrep -x chrome || true); do
+  [[ -r "/proc/$pid/cmdline" ]] || continue
   cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
   if [[ "$cmd" == *"--user-data-dir=$HOME/apps/local-toolbox/.chrome-profile"* ]]; then
     kill "$pid" || true
