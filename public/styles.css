@@ -25,6 +25,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   min-height: 100%;
@@ -588,6 +592,20 @@ select {
   padding: 12px;
 }
 
+.run-log-panel.fullscreen {
+  position: fixed;
+  inset: 18px;
+  z-index: 50;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  box-shadow: var(--shadow);
+}
+
+.run-log-panel.fullscreen .log-list {
+  min-height: 0;
+  height: 100%;
+}
+
 .run-log-head {
   min-height: 28px;
   display: flex;
@@ -604,6 +622,21 @@ select {
 .run-log-head span {
   color: var(--muted);
   font-size: 12px;
+}
+
+.run-log-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.run-log-actions .icon-button {
+  width: 28px;
+  height: 28px;
+}
+
+.run-log-actions .icon-button:disabled {
+  cursor: default;
 }
 
 .login-preview {
@@ -801,10 +834,6 @@ select {
   display: none;
 }
 
-.log-list:has(.log-row) + .log-empty {
-  display: none;
-}
-
 .log-row {
   display: grid;
   gap: 4px;
@@ -860,6 +889,76 @@ select {
   color: var(--ink);
 }
 
+.platform-admin.active {
+  grid-template-columns: minmax(0, 760px);
+}
+
+.platform-config-view {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.config-head {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.config-head h2,
+.config-head span {
+  display: block;
+}
+
+.config-head h2 {
+  font-size: 20px;
+}
+
+.config-head span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.config-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(112px, 1fr));
+  width: min(100%, 480px);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.config-tabs button {
+  min-height: 38px;
+  padding: 0 10px;
+  border-right: 1px solid var(--line-soft);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.config-tabs button:last-child {
+  border-right: 0;
+}
+
+.config-tabs button.active {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.config-tab-panel:not(.active) {
+  display: none;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .module-row span {
   margin-top: 3px;
   color: var(--muted);
@@ -890,7 +989,7 @@ select {
   }
 
   .nav {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .nav-item {

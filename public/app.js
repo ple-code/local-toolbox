@@ -1,4 +1,5 @@
 const urlsEl = document.querySelector("#urls");
+const targetPlatformEl = document.querySelector("#targetPlatform");
 const countEl = document.querySelector("#urlCount");
 const profileMetaEl = document.querySelector("#profileMeta");
 const statusDotEl = document.querySelector("#serverStatus");
@@ -20,6 +21,11 @@ const stateTitleEl = document.querySelector("#stateTitle");
 const stateDetailEl = document.querySelector("#stateDetail");
 const logListEl = document.querySelector("#logList");
 const logEmptyEl = document.querySelector("#logEmpty");
+const logPanelEl = document.querySelector("#logPanel");
+const prevLogPageEl = document.querySelector("#prevLogPage");
+const nextLogPageEl = document.querySelector("#nextLogPage");
+const logPageInfoEl = document.querySelector("#logPageInfo");
+const toggleLogFullscreenEl = document.querySelector("#toggleLogFullscreen");
 const downloadInfoEl = document.querySelector("#downloadInfo");
 const downloadNameEl = document.querySelector("#downloadName");
 const paceEl = document.querySelector("#pace");
@@ -32,6 +38,7 @@ const platformLoginTextEl = document.querySelector("#platformLoginText");
 const platformCredentialTextEl = document.querySelector("#platformCredentialText");
 const historyLatestEl = document.querySelector("#historyLatest");
 const queueListEl = document.querySelector("#queueList");
+const queuePanelEl = document.querySelector("#queuePanel");
 const queueSummaryEl = document.querySelector("#queueSummary");
 const runPillEl = document.querySelector("#runPill");
 const runSubtitleEl = document.querySelector("#runSubtitle");
@@ -44,9 +51,50 @@ const resultPillEl = document.querySelector("#resultPill");
 const resultRowsEl = document.querySelector("#resultRows");
 const sampleUrlsEl = document.querySelector("#sampleUrls");
 const jumpLogsEl = document.querySelector("#jumpLogs");
+const platformListViewEl = document.querySelector("#platformListView");
+const platformConfigViewEl = document.querySelector("#platformConfigView");
+const backToPlatformsEl = document.querySelector("#backToPlatforms");
+const platformConfigTitleEl = document.querySelector("#platformConfigTitle");
+const platformConfigCaptionEl = document.querySelector("#platformConfigCaption");
 let lastLogId = 0;
 let logPollTimer = 0;
 let queueState = [];
+let logEntries = [];
+let logPage = 1;
+const logPageSize = 20;
+
+const stateTitleMap = new Map([
+  ["Opening Chrome", "正在打开浏览器"],
+  ["Chrome Ready", "浏览器已打开"],
+  ["Open Failed", "打开失败"],
+  ["Missing Credentials", "缺少账密"],
+  ["Missing Login URL", "缺少登录地址"],
+  ["Saving", "正在保存"],
+  ["Saved", "已保存"],
+  ["Save Failed", "保存失败"],
+  ["Logging In", "正在登录"],
+  ["Needs Check", "需要人工处理"],
+  ["Login Submitted", "登录已提交"],
+  ["Login Failed", "登录失败"],
+  ["No URL", "缺少 URL"],
+  ["Preparing", "正在准备"],
+  ["Downloading", "正在下载"],
+  ["Downloaded", "下载完成"],
+  ["Export Failed", "导出失败"],
+  ["Preview Updated", "截图已更新"],
+  ["Preview Failed", "截图失败"],
+  ["Ready", "准备就绪"]
+]);
+
+const platformDetails = {
+  极客时间: "正文容器、付费登录态、滚动加载、PDF 分页",
+  "知识库 / 文档站": "站点地图、侧边目录、批量层级导出",
+  通用网页: "页面截图、正文识别、资源内联"
+};
+
+function localizeStateTitle(title) {
+  return stateTitleMap.get(title) || title;
+}
 
 function parseUrls() {
   return urlsEl.value
@@ -65,17 +113,18 @@ function setBusy(isBusy) {
 }
 
 function setState(kind, title, detail) {
+  const displayTitle = localizeStateTitle(title);
   runStateEl.className = `run-card ${kind || ""}`.trim();
-  stateTitleEl.textContent = title;
+  stateTitleEl.textContent = displayTitle;
   stateDetailEl.textContent = detail;
   runPillEl.className = `status-pill ${kind === "done" ? "ok" : kind === "error" ? "error" : kind === "busy" ? "warn" : ""}`.trim();
   runPillEl.textContent = kind === "done" ? "已完成" : kind === "error" ? "失败" : kind === "busy" ? "执行中" : "待执行";
-  runSubtitleEl.textContent = title;
-  captureTagEl.textContent = detail || title;
+  runSubtitleEl.textContent = displayTitle;
+  captureTagEl.textContent = detail || displayTitle;
 
   const progress = kind === "done" ? 100 : kind === "busy" ? 42 : kind === "error" ? 100 : 0;
   totalProgressEl.style.width = `${progress}%`;
-  updateSteps(kind, title, detail);
+  updateSteps(kind, displayTitle, detail);
 }
 
 function updateCount() {
@@ -95,10 +144,10 @@ function hostnameFromUrl(value) {
 function updateSteps(kind, title, detail = "") {
   const text = `${title} ${detail}`;
   let active = "ready";
-  if (/Opening|Chrome|打开|登录|Preparing|准备/i.test(text)) active = "open";
+  if (/打开|浏览器|登录|准备|预热/i.test(text)) active = "open";
   if (/scroll|滚动|加载/i.test(text)) active = "scroll";
-  if (/PDF|生成|Downloading|下载/i.test(text)) active = "pdf";
-  if (kind === "done" || /完成|Downloaded/i.test(text)) active = "done";
+  if (/PDF|生成|下载/i.test(text)) active = "pdf";
+  if (kind === "done" || /完成|已生成|已关闭|结束/i.test(text)) active = "done";
 
   stepListEl.querySelectorAll(".step").forEach((step) => {
     step.classList.toggle("active", step.dataset.step === active);
@@ -106,6 +155,7 @@ function updateSteps(kind, title, detail = "") {
 }
 
 function renderQueue(urls = parseUrls()) {
+  queuePanelEl.hidden = urls.length <= 1;
   queueState = urls.map((url, index) => ({
     url,
     host: hostnameFromUrl(url),
@@ -186,9 +236,28 @@ function appendLogs(entries) {
   if (!entries?.length) {
     return;
   }
-  const fragment = document.createDocumentFragment();
+  const wasOnLastPage = logPage >= Math.max(1, Math.ceil(logEntries.length / logPageSize));
   for (const entry of entries) {
     lastLogId = Math.max(lastLogId, entry.id || 0);
+    logEntries.push(entry);
+    updateSteps("busy", entry.message || "", entry.meta ? JSON.stringify(entry.meta) : "");
+  }
+  if (logEntries.length > 300) {
+    logEntries = logEntries.slice(-300);
+  }
+  if (wasOnLastPage) {
+    logPage = Math.max(1, Math.ceil(logEntries.length / logPageSize));
+  }
+  renderLogs();
+}
+
+function renderLogs() {
+  const totalPages = Math.max(1, Math.ceil(logEntries.length / logPageSize));
+  logPage = Math.min(Math.max(1, logPage), totalPages);
+  const pageEntries = logEntries.slice((logPage - 1) * logPageSize, logPage * logPageSize);
+  const fragment = document.createDocumentFragment();
+
+  for (const entry of pageEntries) {
     const row = document.createElement("div");
     row.className = "log-row";
 
@@ -214,14 +283,14 @@ function appendLogs(entries) {
     }
 
     fragment.append(row);
-    updateSteps("busy", entry.message || "", entry.meta ? JSON.stringify(entry.meta) : "");
   }
-  logListEl.append(fragment);
-  while (logListEl.children.length > 50) {
-    logListEl.firstElementChild.remove();
-  }
+  logListEl.replaceChildren(fragment);
   logListEl.scrollTop = logListEl.scrollHeight;
-  logEmptyEl.hidden = logListEl.children.length > 0;
+  logEmptyEl.hidden = logEntries.length > 0;
+  logListEl.hidden = pageEntries.length === 0;
+  logPageInfoEl.textContent = `第 ${logPage} / ${totalPages} 页`;
+  prevLogPageEl.disabled = logPage <= 1;
+  nextLogPageEl.disabled = logPage >= totalPages;
 }
 
 async function refreshLogs() {
@@ -355,19 +424,19 @@ async function exportFiles() {
 
   setBusy(true);
   downloadInfoEl.hidden = true;
-  setState("busy", "Preparing", "Warmup tab first, then random waits between tabs");
+  setState("busy", "Preparing", "先打开预热页，再按随机间隔打开导出页。");
   try {
     const response = await fetch("/api/export", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ urls, pace: paceEl.value })
+      body: JSON.stringify({ urls, pace: paceEl.value, platform: targetPlatformEl.value })
     });
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       throw new Error(data.error || `HTTP ${response.status}`);
     }
 
-    setState("busy", "Downloading", `${urls.length} item${urls.length > 1 ? "s" : ""}`);
+    setState("busy", "Downloading", `${urls.length} 个文件`);
     const blob = await response.blob();
     const fallback = urls.length === 1 ? "html2pdf-export.pdf" : "html2pdf-export.zip";
     const filename = filenameFromDisposition(response.headers.get("content-disposition"), fallback);
@@ -428,7 +497,7 @@ async function loadHealth() {
     hostMetaEl.textContent = data.runtime?.hostLabel ||
       (location.hostname === "localhost" || location.hostname === "127.0.0.1" ? "本机" : "e540");
   } catch {
-    profileMetaEl.textContent = "Server unavailable";
+    profileMetaEl.textContent = "服务不可用";
     statusDotEl.classList.remove("ok");
     servicePillEl.className = "status-pill service error";
     serviceTextEl.textContent = "服务不可用";
@@ -477,11 +546,73 @@ jumpLogsEl.addEventListener("click", () => {
   logListEl.focus({ preventScroll: true });
 });
 
+prevLogPageEl.addEventListener("click", () => {
+  logPage -= 1;
+  renderLogs();
+});
+
+nextLogPageEl.addEventListener("click", () => {
+  logPage += 1;
+  renderLogs();
+});
+
+toggleLogFullscreenEl.addEventListener("click", () => {
+  logPanelEl.classList.toggle("fullscreen");
+  const isFullscreen = logPanelEl.classList.contains("fullscreen");
+  toggleLogFullscreenEl.title = isFullscreen ? "退出全屏" : "日志全屏";
+  toggleLogFullscreenEl.setAttribute("aria-label", toggleLogFullscreenEl.title);
+});
+
 document.querySelectorAll("[data-platform]").forEach((button) => {
   button.addEventListener("click", () => {
     document.querySelectorAll("[data-platform]").forEach((item) => item.classList.remove("active"));
     button.classList.add("active");
     platformValueEl.textContent = button.dataset.platform || "自动识别";
+  });
+});
+
+function populatePlatformSelect() {
+  const platformRows = [...document.querySelectorAll("[data-platform-option]")].filter((row) => row.dataset.platformAvailable === "true");
+  const options = platformRows.map((row) => {
+    const option = document.createElement("option");
+    option.value = row.dataset.platformOption || row.dataset.platformName;
+    option.textContent = row.dataset.platformName || option.value;
+    return option;
+  });
+  targetPlatformEl.replaceChildren(...options);
+  if (![...targetPlatformEl.options].some((option) => option.value === "geektime")) {
+    targetPlatformEl.add(new Option("极客时间", "geektime"), 0);
+  }
+  targetPlatformEl.value = "geektime";
+}
+
+function showPlatformList() {
+  platformListViewEl.hidden = false;
+  platformConfigViewEl.hidden = true;
+}
+
+function showPlatformConfig(platformName) {
+  platformListViewEl.hidden = true;
+  platformConfigViewEl.hidden = false;
+  platformConfigTitleEl.textContent = `${platformName}配置`;
+  platformConfigCaptionEl.textContent = platformDetails[platformName] || "平台导出策略配置";
+}
+
+document.querySelectorAll("[data-config-platform]").forEach((button) => {
+  button.addEventListener("click", () => {
+    showPlatformConfig(button.dataset.configPlatform || "平台");
+  });
+});
+
+backToPlatformsEl.addEventListener("click", showPlatformList);
+
+document.querySelectorAll("[data-config-tab]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const tab = button.dataset.configTab;
+    document.querySelectorAll("[data-config-tab]").forEach((item) => item.classList.toggle("active", item === button));
+    document.querySelectorAll("[data-config-tab-panel]").forEach((panel) => {
+      panel.classList.toggle("active", panel.dataset.configTabPanel === tab);
+    });
   });
 });
 
@@ -497,9 +628,14 @@ document.querySelectorAll("[data-view]").forEach((button) => {
     document.querySelectorAll("[data-view-panel]").forEach((panel) => {
       panel.classList.toggle("active", panel.dataset.viewPanel === view);
     });
+    if (view === "platforms") {
+      showPlatformList();
+    }
   });
 });
 
+populatePlatformSelect();
 updateCount();
+renderLogs();
 loadHealth().then(() => refreshLogs().catch(() => undefined));
 startLogPolling();

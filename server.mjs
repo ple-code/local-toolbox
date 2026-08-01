@@ -274,12 +274,14 @@ async function exportUrls(req, res) {
   try {
     const body = await readJson(req);
     const urls = parseUrlList(body.urls || DEFAULT_URL);
+    const platform = String(body.platform || "geektime");
     if (!urls.length) {
       throw new Error("至少需要一个 URL。");
     }
     const delayRange = delayRangeFromBody(body);
     logStep("开始导出任务", {
       count: urls.length,
+      platform,
       pace: delayRange.source,
       minDelayMs: delayRange.minMs,
       maxDelayMs: delayRange.maxMs
