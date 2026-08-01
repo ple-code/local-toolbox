@@ -12,7 +12,9 @@ const usernameEl = document.querySelector("#username");
 const loginUrlEl = document.querySelector("#loginUrl");
 const passwordEl = document.querySelector("#password");
 const saveCredentialsEl = document.querySelector("#saveCredentials");
+const saveCredentialsTextEl = document.querySelector("#saveCredentialsText");
 const credentialMetaEl = document.querySelector("#credentialMeta");
+const loginUrlLabelEl = document.querySelector("#loginUrlLabel");
 const loginPreviewEl = document.querySelector("#loginPreview");
 const refreshPreviewEl = document.querySelector("#refreshPreview");
 const loginScreenshotEl = document.querySelector("#loginScreenshot");
@@ -36,6 +38,8 @@ const hostMetaEl = document.querySelector("#hostMeta");
 const platformValueEl = document.querySelector("#platformValue");
 const platformLoginTextEl = document.querySelector("#platformLoginText");
 const platformCredentialTextEl = document.querySelector("#platformCredentialText");
+const platformLoginModeTextEl = document.querySelector("#platformLoginModeText");
+const loginCaptionEl = document.querySelector("#loginCaption");
 const historyLatestEl = document.querySelector("#historyLatest");
 const queueListEl = document.querySelector("#queueList");
 const queuePanelEl = document.querySelector("#queuePanel");
@@ -61,6 +65,7 @@ let logPollTimer = 0;
 let queueState = [];
 let logEntries = [];
 let logPage = 1;
+let currentConfigPlatformKey = "geektime";
 const logPageSize = 20;
 
 const stateTitleMap = new Map([
@@ -88,9 +93,12 @@ const stateTitleMap = new Map([
 
 const platformDetails = {
   极客时间: "正文容器、付费登录态、滚动加载、PDF 分页",
-  "知识库 / 文档站": "站点地图、侧边目录、批量层级导出",
+  微信公众号: "公开文章导出、无需登录、正文识别",
+  知识星球: "付费内容登录态、滚动加载、PDF 分页",
   通用网页: "页面截图、正文识别、资源内联"
 };
+
+let platformCatalog = new Map();
 
 function localizeStateTitle(title) {
   return stateTitleMap.get(title) || title;
@@ -104,12 +112,14 @@ function parseUrls() {
 }
 
 function setBusy(isBusy) {
-  openBrowserEl.disabled = isBusy;
-  autoLoginEl.disabled = isBusy;
+  const authMode = platformCatalog.get(currentConfigPlatformKey)?.authMode || "credentials";
+  const canOpenLogin = authMode === "credentials" || authMode === "manual";
+  openBrowserEl.disabled = isBusy || !canOpenLogin;
+  autoLoginEl.disabled = isBusy || authMode !== "credentials";
   exportEl.disabled = isBusy;
   clearEl.disabled = isBusy;
-  saveCredentialsEl.disabled = isBusy;
-  refreshPreviewEl.disabled = isBusy;
+  saveCredentialsEl.disabled = isBusy || authMode === "none";
+  refreshPreviewEl.disabled = isBusy || !canOpenLogin;
 }
 
 function setState(kind, title, detail) {
@@ -303,10 +313,16 @@ async function refreshLogs() {
 }
 
 async function openLoginWindow() {
+  const platform = platformCatalog.get(currentConfigPlatformKey);
+  if (platform?.authMode === "none") {
+    setState("", "准备就绪", `${platform.name}无需登录。`);
+    return;
+  }
   setBusy(true);
-  setState("busy", "Opening Chrome", "打开极客邦登录页。");
+  setState("busy", "Opening Chrome", `打开${platform?.name || "平台"}登录页。`);
   try {
     const result = await requestJson("/api/open-browser", {
+      platform: currentConfigPlatformKey,
       loginUrl: loginUrlEl.value.trim()
     });
     setState("done", "Chrome Ready", result.openedUrl);
@@ -322,7 +338,53 @@ async function openLoginWindow() {
   }
 }
 
-function renderCredentialMeta(meta) {
+function renderCredentialMeta(meta, platform = platformCatalog.get(currentConfigPlatformKey)) {
+  const platformName = platform?.name || "当前平台";
+  const authMode = platform?.authMode || "credentials";
+  const isManual = authMode === "manual";
+  const canOpenLogin = authMode === "credentials" || authMode === "manual";
+  loginCaptionEl.textContent = authMode === "credentials"
+    ? `${platformName}账号与登录页`
+    : authMode === "manual"
+      ? `${platformName}微信扫码登录`
+      : `${platformName}无需登录`;
+  platformLoginModeTextEl.textContent = authMode === "credentials" ? "账号密码登录" : authMode === "manual" ? "手动扫码登录" : "无需登录";
+  loginUrlLabelEl.textContent = isManual ? "手动登录地址" : "账密登录地址";
+  saveCredentialsTextEl.textContent = isManual ? "保存登录地址" : "保存账密";
+  usernameEl.disabled = authMode !== "credentials";
+  passwordEl.disabled = authMode !== "credentials";
+  loginUrlEl.disabled = authMode === "none";
+  openBrowserEl.disabled = !canOpenLogin;
+  autoLoginEl.disabled = authMode !== "credentials";
+  saveCredentialsEl.disabled = authMode === "none";
+  refreshPreviewEl.disabled = !canOpenLogin;
+
+  if (authMode === "none") {
+    usernameEl.value = "";
+    passwordEl.value = "";
+    loginUrlEl.value = "";
+    credentialMetaEl.textContent = `${platformName}无需配置账密。`;
+    credentialPillEl.className = "status-pill ok";
+    credentialPillEl.textContent = "无需凭证";
+    platformCredentialTextEl.textContent = "无需配置";
+    platformLoginTextEl.textContent = "无需配置";
+    return;
+  }
+
+  if (isManual) {
+    usernameEl.value = "";
+    passwordEl.value = "";
+    loginUrlEl.value = meta?.loginUrl || "";
+    credentialMetaEl.textContent = meta?.configured
+      ? `已保存登录地址 · ${meta.updatedAt}`
+      : "未配置手动登录地址";
+    credentialPillEl.className = meta?.configured ? "status-pill ok" : "status-pill warn";
+    credentialPillEl.textContent = meta?.configured ? "登录地址已配置" : "待配置登录地址";
+    platformCredentialTextEl.textContent = "手动扫码登录";
+    platformLoginTextEl.textContent = meta?.loginUrl || "未配置";
+    return;
+  }
+
   if (!meta?.configured) {
     credentialMetaEl.textContent = "未配置账密";
     credentialPillEl.className = "status-pill warn";
@@ -342,10 +404,15 @@ function renderCredentialMeta(meta) {
 
 async function saveCredentials(event) {
   event.preventDefault();
+  const platform = platformCatalog.get(currentConfigPlatformKey);
+  if (platform?.authMode === "none") {
+    setState("", "准备就绪", `${platform.name}无需保存账密。`);
+    return;
+  }
   const username = usernameEl.value.trim();
   const password = passwordEl.value;
   const loginUrl = loginUrlEl.value.trim();
-  if (!username || !password) {
+  if (platform?.authMode === "credentials" && (!username || !password)) {
     setState("error", "Missing Credentials", "账号和密码都需要填写。");
     return;
   }
@@ -355,16 +422,16 @@ async function saveCredentials(event) {
   }
 
   setBusy(true);
-  setState("busy", "Saving", "账密会加密保存到本地 SQLite。");
+  setState("busy", "Saving", platform?.authMode === "manual" ? "登录地址会保存到本地 SQLite。" : "账密会加密保存到本地 SQLite。");
   try {
-    const meta = await requestJson("/api/credentials/geektime", {
+    const meta = await requestJson(`/api/credentials/${encodeURIComponent(currentConfigPlatformKey)}`, {
       username,
       password,
       loginUrl
     });
     passwordEl.value = "";
-    renderCredentialMeta(meta);
-    setState("done", "Saved", "密码已加密保存，页面不会回显。");
+    renderCredentialMeta(meta, platform);
+    setState("done", "Saved", platform?.authMode === "manual" ? "登录地址已保存。" : "密码已加密保存，页面不会回显。");
   } catch (error) {
     setState("error", "Save Failed", error.message);
   } finally {
@@ -390,10 +457,16 @@ async function refreshLoginPreview() {
 }
 
 async function autoLogin() {
+  const platform = platformCatalog.get(currentConfigPlatformKey);
+  if (platform?.authMode !== "credentials") {
+    const message = platform?.authMode === "manual" ? `${platform.name}需要打开登录窗口后手动扫码。` : `${platform.name}无需登录。`;
+    setState("", "准备就绪", message);
+    return;
+  }
   setBusy(true);
-  setState("busy", "Logging In", "正在打开极客邦登录页并自动填写。");
+  setState("busy", "Logging In", `正在打开${platform?.name || "平台"}登录页并自动填写。`);
   try {
-    const result = await requestJson("/api/auto-login", {});
+    const result = await requestJson("/api/auto-login", { platform: currentConfigPlatformKey });
     const detail = result.needsManualAction
       ? "可能触发验证码、扫码或短信验证，需要人工接管。"
       : result.currentUrl || result.loginUrl || "登录流程已提交。";
@@ -573,6 +646,12 @@ document.querySelectorAll("[data-platform]").forEach((button) => {
 
 function populatePlatformSelect() {
   const platformRows = [...document.querySelectorAll("[data-platform-option]")].filter((row) => row.dataset.platformAvailable === "true");
+  platformCatalog = new Map(platformRows.map((row) => [row.dataset.platformOption, {
+    key: row.dataset.platformOption,
+    name: row.dataset.platformName || row.dataset.platformOption,
+    authMode: row.dataset.platformAuthMode || "none",
+    detail: platformDetails[row.dataset.platformName] || ""
+  }]));
   const options = platformRows.map((row) => {
     const option = document.createElement("option");
     option.value = row.dataset.platformOption || row.dataset.platformName;
@@ -586,16 +665,44 @@ function populatePlatformSelect() {
   targetPlatformEl.value = "geektime";
 }
 
+async function loadCredentialForPlatform(platformKey) {
+  const platform = platformCatalog.get(platformKey);
+  if (platform?.authMode === "none") {
+    renderCredentialMeta({ configured: false }, platform);
+    return;
+  }
+  try {
+    const response = await fetch(`/api/credentials/${encodeURIComponent(platformKey)}`);
+    const meta = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(meta.error || `HTTP ${response.status}`);
+    }
+    renderCredentialMeta(meta, platform);
+  } catch (error) {
+    renderCredentialMeta({ configured: false }, platform);
+    credentialMetaEl.textContent = `读取${platform.name}账密配置失败：${error.message}`;
+  }
+}
+
 function showPlatformList() {
   platformListViewEl.hidden = false;
   platformConfigViewEl.hidden = true;
 }
 
 function showPlatformConfig(platformName) {
+  const platformRow = [...document.querySelectorAll("[data-platform-option]")]
+    .find((row) => row.dataset.platformName === platformName);
+  currentConfigPlatformKey = platformRow?.dataset.platformOption || currentConfigPlatformKey;
+  const platform = platformCatalog.get(currentConfigPlatformKey);
   platformListViewEl.hidden = true;
   platformConfigViewEl.hidden = false;
-  platformConfigTitleEl.textContent = `${platformName}配置`;
-  platformConfigCaptionEl.textContent = platformDetails[platformName] || "平台导出策略配置";
+  platformConfigTitleEl.textContent = `${platform?.name || platformName}配置`;
+  platformConfigCaptionEl.textContent = platform?.detail || platformDetails[platformName] || "平台导出策略配置";
+  platformValueEl.textContent = platform?.name || platformName;
+  document.querySelectorAll("[data-platform]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.platform === (platform?.name || platformName));
+  });
+  loadCredentialForPlatform(currentConfigPlatformKey).catch(() => undefined);
 }
 
 document.querySelectorAll("[data-config-platform]").forEach((button) => {

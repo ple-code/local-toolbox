@@ -159,15 +159,19 @@
               <div class="panel-title"><h2>平台列表</h2><span>自动识别 + 手动策略</span></div>
             </div>
             <div class="panel-body module-list">
-              <div class="module-row platform-row" data-platform-option="geektime" data-platform-name="极客时间" data-platform-available="true">
+              <div class="module-row platform-row" data-platform-option="geektime" data-platform-name="极客时间" data-platform-available="true" data-platform-auth-mode="credentials">
                 <div><strong>极客时间</strong><span>正文容器、付费登录态、滚动加载、PDF 分页</span></div>
                 <div class="row-actions"><span class="status-pill ok">启用</span><button class="button secondary compact" type="button" data-config-platform="极客时间">配置</button></div>
               </div>
-              <div class="module-row platform-row" data-platform-option="docs" data-platform-name="知识库 / 文档站" data-platform-available="false">
-                <div><strong>知识库 / 文档站</strong><span>站点地图、侧边目录、批量层级导出</span></div>
-                <div class="row-actions"><span class="status-pill">规划中</span><button class="button secondary compact" type="button" data-config-platform="知识库 / 文档站">配置</button></div>
+              <div class="module-row platform-row" data-platform-option="wechat" data-platform-name="微信公众号" data-platform-available="true" data-platform-auth-mode="none">
+                <div><strong>微信公众号</strong><span>公开文章导出、无需登录、正文识别</span></div>
+                <div class="row-actions"><span class="status-pill ok">启用</span><button class="button secondary compact" type="button" data-config-platform="微信公众号">配置</button></div>
               </div>
-              <div class="module-row platform-row" data-platform-option="generic" data-platform-name="通用网页" data-platform-available="true">
+              <div class="module-row platform-row" data-platform-option="zsxq" data-platform-name="知识星球" data-platform-available="true" data-platform-auth-mode="manual">
+                <div><strong>知识星球</strong><span>微信扫码登录、人工确认、浏览器打印 PDF</span></div>
+                <div class="row-actions"><span class="status-pill ok">启用</span><button class="button secondary compact" type="button" data-config-platform="知识星球">配置</button></div>
+              </div>
+              <div class="module-row platform-row" data-platform-option="generic" data-platform-name="通用网页" data-platform-available="true" data-platform-auth-mode="none">
                 <div><strong>通用网页</strong><span>页面截图、正文识别、资源内联</span></div>
                 <div class="row-actions"><span class="status-pill warn">基础支持</span><button class="button secondary compact" type="button" data-config-platform="通用网页">配置</button></div>
               </div>
@@ -195,15 +199,17 @@
                 <div class="field">
                   <span class="field-label">平台策略</span>
                   <div class="segmented" role="tablist" aria-label="平台策略">
-                    <button class="active" type="button" data-platform="自动识别">自动识别</button>
-                    <button type="button" data-platform="极客时间">极客时间</button>
+                    <button class="active" type="button" data-platform="极客时间">极客时间</button>
+                    <button type="button" data-platform="微信公众号">公众号</button>
+                    <button type="button" data-platform="知识星球">知识星球</button>
                     <button type="button" data-platform="通用网页">通用网页</button>
                   </div>
                 </div>
-                <div class="kv-row"><span>当前平台</span><strong id="platformValue">自动识别</strong></div>
+                <div class="kv-row"><span>当前平台</span><strong id="platformValue">极客时间</strong></div>
                 <div class="kv-row"><span>登录页地址</span><strong id="platformLoginText">未读取</strong></div>
                 <div class="kv-row"><span>浏览器 Profile</span><strong>.chrome-profile</strong></div>
                 <div class="kv-row"><span>账号状态</span><strong id="platformCredentialText">未配置</strong></div>
+                <div class="kv-row"><span>登录要求</span><strong id="platformLoginModeText">需要登录</strong></div>
                 <div class="kv-row"><span>任务节奏</span><strong>5-15 秒随机间隔</strong></div>
               </div>
             </section>
@@ -212,7 +218,7 @@
               <div class="panel-head">
                 <div class="panel-title">
                   <h2 id="loginTitle">登录配置</h2>
-                  <span>极客时间账号与登录页</span>
+                  <span id="loginCaption">极客时间账号与登录页</span>
                 </div>
               </div>
               <form class="panel-body credentials" id="credentialsForm">
@@ -222,8 +228,8 @@
                     <input id="username" autocomplete="username" placeholder="手机号或邮箱">
                   </div>
                   <div class="field">
-                    <label for="loginUrl">账密登录地址</label>
-                    <input id="loginUrl" autocomplete="off" placeholder="请输入账密登录地址">
+                    <label for="loginUrl" id="loginUrlLabel">账密登录地址</label>
+                    <input id="loginUrl" autocomplete="off" placeholder="请输入登录地址">
                   </div>
                 </div>
                 <div class="field">
@@ -241,7 +247,7 @@
                   </button>
                   <button class="button secondary" id="saveCredentials" type="submit">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M7 3v6h8"/><path d="M7 15h10"/></svg>
-                    保存账密
+                    <span id="saveCredentialsText">保存账密</span>
                   </button>
                 </div>
                 <div class="credential-meta" id="credentialMeta">未配置账密</div>

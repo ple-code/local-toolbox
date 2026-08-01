@@ -30,6 +30,13 @@ let exportInProgress = false;
 let nextLogId = 1;
 const runLogs = [];
 
+const platforms = new Map([
+  ["geektime", { key: "geektime", name: "极客时间", authMode: "credentials" }],
+  ["wechat", { key: "wechat", name: "微信公众号", authMode: "none" }],
+  ["zsxq", { key: "zsxq", name: "知识星球", authMode: "manual" }],
+  ["generic", { key: "generic", name: "通用网页", authMode: "none" }]
+]);
+
 function sanitizeLogMeta(meta = {}) {
   return Object.fromEntries(Object.entries(meta).filter(([key]) => !/password|secret|payload/i.test(key)));
 }
@@ -53,22 +60,48 @@ function logStep(message, meta = {}) {
 
 const session = new ChromePdfSession({ profileDir, waitMs, keepBrowser: false, log: logStep });
 
-function isAccountUrl(value) {
+function sameHostname(left, right) {
   try {
-    return new URL(value).hostname === "account.geekbang.org";
+    return new URL(left).hostname === new URL(right).hostname;
   } catch {
     return false;
   }
 }
 
-function hasGeektimeUrl(urls) {
-  return urls.some((value) => {
+function inferPlatformKey(urls) {
+  if (urls.some((value) => {
     try {
       return new URL(value).hostname.endsWith("geekbang.org");
     } catch {
       return false;
     }
-  });
+  })) {
+    return "geektime";
+  }
+  if (urls.some((value) => {
+    try {
+      return new URL(value).hostname === "mp.weixin.qq.com";
+    } catch {
+      return false;
+    }
+  })) {
+    return "wechat";
+  }
+  if (urls.some((value) => {
+    try {
+      return new URL(value).hostname.endsWith("zsxq.com");
+    } catch {
+      return false;
+    }
+  })) {
+    return "zsxq";
+  }
+  return "generic";
+}
+
+function platformFromKey(value, urls = []) {
+  const key = String(value || "").trim() || inferPlatformKey(urls);
+  return platforms.get(key) || platforms.get("generic");
 }
 
 function delayRangeFromBody(body = {}) {
@@ -166,16 +199,21 @@ async function serveStatic(req, res) {
 
 async function openForLogin(req, res) {
   const body = await readJson(req);
-  const credential = await credentials.get("geektime");
-  const configuredLoginUrl = credential?.loginUrl || "";
+  const platform = platformFromKey(body.platform);
+  if (platform.authMode === "none") {
+    throw new Error(`${platform.name}无需登录。`);
+  }
+  const credential = platform.authMode === "credentials" ? await credentials.get(platform.key) : undefined;
+  const setting = platform.authMode === "manual" ? await credentials.getLoginUrlMeta(platform.key) : undefined;
+  const configuredLoginUrl = credential?.loginUrl || setting?.loginUrl || "";
   const rawLoginUrl = body.loginUrl || configuredLoginUrl;
   if (!rawLoginUrl) {
     throw new Error("没有找到登录地址，请先填写账密登录地址。");
   }
   const loginUrl = parseUrlList([rawLoginUrl])[0];
-  logStep("打开登录窗口", { loginUrl });
+  logStep("打开登录窗口", { platform: platform.name, loginUrl });
   await session.openForLogin(loginUrl, { waitMs });
-  logStep("登录窗口已打开", { loginUrl, profileDir });
+  logStep("登录窗口已打开", { platform: platform.name, loginUrl, profileDir });
   json(res, 200, {
     ok: true,
     profileDir,
@@ -183,48 +221,96 @@ async function openForLogin(req, res) {
   });
 }
 
-async function credentialMeta(req, res) {
-  json(res, 200, await credentials.getMeta("geektime"));
+async function credentialMeta(req, res, platformKey = "geektime") {
+  const platform = platformFromKey(platformKey);
+  if (platform.authMode === "none") {
+    json(res, 200, {
+      configured: false,
+      service: platform.key,
+      authMode: platform.authMode,
+      loginRequired: false
+    });
+    return;
+  }
+  if (platform.authMode === "manual") {
+    const meta = await credentials.getLoginUrlMeta(platform.key);
+    json(res, 200, {
+      ...meta,
+      service: platform.key,
+      authMode: platform.authMode,
+      loginRequired: true,
+      manualLogin: true
+    });
+    return;
+  }
+  const meta = await credentials.getMeta(platform.key);
+  json(res, 200, {
+    ...meta,
+    service: platform.key,
+    authMode: platform.authMode,
+    loginRequired: true
+  });
 }
 
-async function saveCredential(req, res) {
+async function saveCredential(req, res, platformKey = "geektime") {
   const body = await readJson(req);
+  const platform = platformFromKey(platformKey || body.platform);
+  if (platform.authMode === "none") {
+    throw new Error(`${platform.name}无需保存账密。`);
+  }
   if (!body.loginUrl) {
-    throw new Error("没有找到登录地址，请填写账密登录地址。");
+    throw new Error("没有找到登录地址，请填写登录地址。");
   }
   const loginUrl = parseUrlList([body.loginUrl])[0];
-  logStep("保存极客时间账密配置", {
+  if (platform.authMode === "manual") {
+    logStep("保存平台登录地址配置", {
+      platform: platform.name,
+      loginUrl
+    });
+    await credentials.saveLoginUrl(platform.key, loginUrl);
+    await credentialMeta(req, res, platform.key);
+    return;
+  }
+  logStep("保存平台账密配置", {
+    platform: platform.name,
     username: body.username,
     loginUrl
   });
-  await credentials.save("geektime", {
+  await credentials.save(platform.key, {
     username: body.username,
     password: body.password,
     loginUrl
   });
-  json(res, 200, await credentials.getMeta("geektime"));
+  await credentialMeta(req, res, platform.key);
 }
 
 async function autoLogin(req, res) {
-  logStep("开始自动登录");
-  const credential = await credentials.get("geektime");
+  const body = await readJson(req);
+  const platform = platformFromKey(body.platform);
+  if (platform.authMode !== "credentials") {
+    throw new Error(`${platform.name}无需登录。`);
+  }
+  logStep("开始自动登录", { platform: platform.name });
+  const credential = await credentials.get(platform.key);
   if (!credential) {
-    throw new Error("还没有保存极客时间账号密码。");
+    throw new Error(`还没有保存${platform.name}账号密码。`);
   }
   if (!credential.loginUrl) {
     throw new Error("没有找到登录地址，请先填写账密登录地址。");
   }
   const loginUrl = parseUrlList([credential.loginUrl])[0];
-  logStep("读取到登录配置", { username: credential.username, loginUrl });
+  logStep("读取到登录配置", { platform: platform.name, username: credential.username, loginUrl });
   const result = await session.autoLogin({
     username: credential.username,
     password: credential.password,
     loginUrl,
     waitMs
   });
-  const needsManualAction = !result.submitted || (result.needsManualAction && isAccountUrl(result.currentUrl || loginUrl));
+  const needsManualAction = !result.submitted ||
+    (result.needsManualAction && sameHostname(result.currentUrl || loginUrl, loginUrl));
   if (!needsManualAction) {
     logStep("自动登录结束，关闭远程 Chrome", {
+      platform: platform.name,
       currentUrl: result.currentUrl,
       submitted: result.submitted,
       reason: result.reason
@@ -232,12 +318,14 @@ async function autoLogin(req, res) {
     await session.close();
   } else {
     logStep("自动登录需要人工处理", {
+      platform: platform.name,
       currentUrl: result.currentUrl,
       reason: result.reason
     });
   }
   json(res, 200, {
     ok: true,
+    platform: platform.key,
     username: credential.username,
     loginUrl,
     currentUrl: result.currentUrl,
@@ -274,24 +362,26 @@ async function exportUrls(req, res) {
   try {
     const body = await readJson(req);
     const urls = parseUrlList(body.urls || DEFAULT_URL);
-    const platform = String(body.platform || "geektime");
+    const platform = platformFromKey(body.platform, urls);
     if (!urls.length) {
       throw new Error("至少需要一个 URL。");
     }
     const delayRange = delayRangeFromBody(body);
     logStep("开始导出任务", {
       count: urls.length,
-      platform,
+      platform: platform.name,
+      platformKey: platform.key,
       pace: delayRange.source,
       minDelayMs: delayRange.minMs,
       maxDelayMs: delayRange.maxMs
     });
 
-    if (hasGeektimeUrl(urls)) {
-      const credential = await credentials.get("geektime");
+    if (platform.authMode === "credentials") {
+      const credential = await credentials.get(platform.key);
       if (credential?.username && credential?.password && credential?.loginUrl) {
         const loginUrl = parseUrlList([credential.loginUrl])[0];
-        logStep("导出前确认极客时间登录", {
+        logStep("导出前确认平台登录", {
+          platform: platform.name,
           username: credential.username,
           loginUrl
         });
@@ -302,8 +392,9 @@ async function exportUrls(req, res) {
           waitMs
         });
         const needsManualAction = !loginResult.submitted ||
-          (loginResult.needsManualAction && isAccountUrl(loginResult.currentUrl || loginUrl));
+          (loginResult.needsManualAction && sameHostname(loginResult.currentUrl || loginUrl, loginUrl));
         logStep("导出前登录确认结果", {
+          platform: platform.name,
           currentUrl: loginResult.currentUrl,
           title: loginResult.title,
           submitted: loginResult.submitted,
@@ -311,11 +402,15 @@ async function exportUrls(req, res) {
           reason: loginResult.reason
         });
         if (needsManualAction) {
-          throw new Error(`极客时间登录需要人工处理：${loginResult.reason || loginResult.currentUrl || "未知原因"}`);
+          throw new Error(`${platform.name}登录需要人工处理：${loginResult.reason || loginResult.currentUrl || "未知原因"}`);
         }
       } else {
-        logStep("未配置完整极客时间账密，按现有浏览器登录态导出");
+        logStep("未配置完整平台账密，按现有浏览器登录态导出", { platform: platform.name });
       }
+    } else if (platform.authMode === "manual") {
+      logStep("当前平台使用手动登录态", { platform: platform.name });
+    } else {
+      logStep("当前平台无需登录", { platform: platform.name });
     }
 
     await session.closeLoginTab();
@@ -335,7 +430,7 @@ async function exportUrls(req, res) {
           logStep("预热页面已关闭");
         }
         logStep("开始生成 PDF", { url });
-        const data = await session.pdfForUrl(url, { waitMs });
+        const data = await session.pdfForUrl(url, { waitMs, platform: platform.key });
         logStep("PDF 已生成", { url, sizeKb: Math.round(data.length / 1024) });
         pdfs.push({
           name: pdfFilenameForUrl(url, usedNames),
@@ -401,6 +496,15 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/credentials/geektime") {
       await saveCredential(req, res);
+      return;
+    }
+    const credentialMatch = /^\/api\/credentials\/([^/]+)$/.exec(url.pathname);
+    if (credentialMatch && req.method === "GET") {
+      await credentialMeta(req, res, decodeURIComponent(credentialMatch[1]));
+      return;
+    }
+    if (credentialMatch && req.method === "POST") {
+      await saveCredential(req, res, decodeURIComponent(credentialMatch[1]));
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/auto-login") {
