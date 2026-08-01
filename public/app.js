@@ -246,7 +246,7 @@ function appendLogs(entries) {
   if (!entries?.length) {
     return;
   }
-  const wasOnLastPage = logPage >= Math.max(1, Math.ceil(logEntries.length / logPageSize));
+  const wasOnNewestPage = logPage === 1;
   for (const entry of entries) {
     lastLogId = Math.max(lastLogId, entry.id || 0);
     logEntries.push(entry);
@@ -255,8 +255,8 @@ function appendLogs(entries) {
   if (logEntries.length > 300) {
     logEntries = logEntries.slice(-300);
   }
-  if (wasOnLastPage) {
-    logPage = Math.max(1, Math.ceil(logEntries.length / logPageSize));
+  if (wasOnNewestPage) {
+    logPage = 1;
   }
   renderLogs();
 }
@@ -264,7 +264,8 @@ function appendLogs(entries) {
 function renderLogs() {
   const totalPages = Math.max(1, Math.ceil(logEntries.length / logPageSize));
   logPage = Math.min(Math.max(1, logPage), totalPages);
-  const pageEntries = logEntries.slice((logPage - 1) * logPageSize, logPage * logPageSize);
+  const newestFirstEntries = [...logEntries].reverse();
+  const pageEntries = newestFirstEntries.slice((logPage - 1) * logPageSize, logPage * logPageSize);
   const fragment = document.createDocumentFragment();
 
   for (const entry of pageEntries) {
@@ -295,7 +296,7 @@ function renderLogs() {
     fragment.append(row);
   }
   logListEl.replaceChildren(fragment);
-  logListEl.scrollTop = logListEl.scrollHeight;
+  logListEl.scrollTop = 0;
   logEmptyEl.hidden = logEntries.length > 0;
   logListEl.hidden = pageEntries.length === 0;
   logPageInfoEl.textContent = `第 ${logPage} / ${totalPages} 页`;
