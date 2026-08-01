@@ -61,6 +61,16 @@ function isAccountUrl(value) {
   }
 }
 
+function hasGeektimeUrl(urls) {
+  return urls.some((value) => {
+    try {
+      return new URL(value).hostname.endsWith("geekbang.org");
+    } catch {
+      return false;
+    }
+  });
+}
+
 const contentTypes = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
@@ -231,6 +241,37 @@ async function exportUrls(req, res) {
       throw new Error("至少需要一个 URL。");
     }
     logStep("开始导出任务", { count: urls.length });
+
+    if (hasGeektimeUrl(urls)) {
+      const credential = await credentials.get("geektime");
+      if (credential?.username && credential?.password && credential?.loginUrl) {
+        const loginUrl = parseUrlList([credential.loginUrl])[0];
+        logStep("导出前确认极客时间登录", {
+          username: credential.username,
+          loginUrl
+        });
+        const loginResult = await session.autoLogin({
+          username: credential.username,
+          password: credential.password,
+          loginUrl,
+          waitMs
+        });
+        const needsManualAction = !loginResult.submitted ||
+          (loginResult.needsManualAction && isAccountUrl(loginResult.currentUrl || loginUrl));
+        logStep("导出前登录确认结果", {
+          currentUrl: loginResult.currentUrl,
+          title: loginResult.title,
+          submitted: loginResult.submitted,
+          needsManualAction,
+          reason: loginResult.reason
+        });
+        if (needsManualAction) {
+          throw new Error(`极客时间登录需要人工处理：${loginResult.reason || loginResult.currentUrl || "未知原因"}`);
+        }
+      } else {
+        logStep("未配置完整极客时间账密，按现有浏览器登录态导出");
+      }
+    }
 
     await session.closeLoginTab();
     logStep("打开预热页面", { url: urls[0] });
