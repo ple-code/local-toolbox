@@ -636,14 +636,6 @@ toggleLogFullscreenEl.addEventListener("click", () => {
   toggleLogFullscreenEl.setAttribute("aria-label", toggleLogFullscreenEl.title);
 });
 
-document.querySelectorAll("[data-platform]").forEach((button) => {
-  button.addEventListener("click", () => {
-    document.querySelectorAll("[data-platform]").forEach((item) => item.classList.remove("active"));
-    button.classList.add("active");
-    platformValueEl.textContent = button.dataset.platform || "自动识别";
-  });
-});
-
 function populatePlatformSelect() {
   const platformRows = [...document.querySelectorAll("[data-platform-option]")].filter((row) => row.dataset.platformAvailable === "true");
   platformCatalog = new Map(platformRows.map((row) => [row.dataset.platformOption, {
@@ -699,9 +691,6 @@ function showPlatformConfig(platformName) {
   platformConfigTitleEl.textContent = `${platform?.name || platformName}配置`;
   platformConfigCaptionEl.textContent = platform?.detail || platformDetails[platformName] || "平台导出策略配置";
   platformValueEl.textContent = platform?.name || platformName;
-  document.querySelectorAll("[data-platform]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.platform === (platform?.name || platformName));
-  });
   loadCredentialForPlatform(currentConfigPlatformKey).catch(() => undefined);
 }
 
