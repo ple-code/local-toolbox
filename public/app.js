@@ -440,19 +440,50 @@ async function downloadFromResponse(response, urlCount) {
   const blob = await response.blob();
   const fallback = urlCount === 1 ? "html2pdf-export.pdf" : "html2pdf-export.zip";
   const filename = filenameFromDisposition(response.headers.get("content-disposition"), fallback);
-  const href = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = href;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(href);
+  triggerBrowserDownload(URL.createObjectURL(blob), filename, true);
 
   downloadInfoEl.hidden = false;
   downloadNameEl.textContent = filename;
   renderDownloadResult(filename, blob.size, urlCount);
   setState("done", "Downloaded", `${Math.round(blob.size / 1024)} KB`);
+}
+
+function triggerBrowserDownload(href, filename = "", revoke = false) {
+  const link = document.createElement("a");
+  link.href = href;
+  if (filename) {
+    link.download = filename;
+  }
+  document.body.append(link);
+  link.click();
+  link.remove();
+  if (revoke) {
+    setTimeout(() => URL.revokeObjectURL(href), 1000);
+  }
+}
+
+async function recoverSuccessfulTaskDownload(taskId, urlCount) {
+  if (!taskId) {
+    return false;
+  }
+  const response = await fetch(`/api/tasks/${encodeURIComponent(taskId)}`);
+  if (!response.ok) {
+    return false;
+  }
+  const data = await response.json().catch(() => ({}));
+  const task = data.task;
+  if (task?.status !== "succeeded" || !task.result?.filename) {
+    return false;
+  }
+  const downloadUrl = `/api/tasks/${encodeURIComponent(taskId)}/download`;
+  triggerBrowserDownload(downloadUrl, task.result.filename);
+  downloadInfoEl.hidden = false;
+  downloadNameEl.textContent = task.result.filename;
+  renderDownloadResult(task.result.filename, task.result.sizeBytes || 0, urlCount);
+  setState("done", "Downloaded", `${task.result.sizeKb || Math.round((task.result.sizeBytes || 0) / 1024)} KB`);
+  refreshLogs().catch(() => undefined);
+  loadTasks().catch(() => undefined);
+  return true;
 }
 
 async function openLoginWindow() {
@@ -694,9 +725,12 @@ async function exportFiles() {
     await downloadFromResponse(response, urls.length);
     loadTasks().catch(() => undefined);
   } catch (error) {
-    setState("error", "Export Failed", error.message);
-    loadTasks().catch(() => undefined);
-    resetManualLoginPanel();
+    const recovered = await recoverSuccessfulTaskDownload(taskId, urls.length).catch(() => false);
+    if (!recovered) {
+      setState("error", "Export Failed", error.message);
+      loadTasks().catch(() => undefined);
+      resetManualLoginPanel();
+    }
   } finally {
     refreshLogs().catch(() => undefined);
     if (!pendingManualLoginTaskId) {
@@ -729,9 +763,12 @@ async function continueManualLoginExport() {
     resetManualLoginPanel();
     loadTasks().catch(() => undefined);
   } catch (error) {
-    setState("error", "Export Failed", error.message);
-    resetManualLoginPanel();
-    loadTasks().catch(() => undefined);
+    const recovered = await recoverSuccessfulTaskDownload(taskId, Math.max(1, urls.length)).catch(() => false);
+    if (!recovered) {
+      setState("error", "Export Failed", error.message);
+      resetManualLoginPanel();
+      loadTasks().catch(() => undefined);
+    }
   } finally {
     refreshLogs().catch(() => undefined);
     setBusy(false);
