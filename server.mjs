@@ -639,8 +639,26 @@ function delayRangeFromTask(task) {
   };
 }
 
-async function ensureCredentialsForExport(platform) {
+async function ensureCredentialsForExport(platform, urls = []) {
   if (platform.authMode === "credentials") {
+    const probeUrl = urls[0];
+    if (probeUrl) {
+      const probe = await session.probeAuthState(probeUrl, { platform: platform.key, waitMs });
+      logStep("导出前登录态探测结果", {
+        platform: platform.name,
+        url: probeUrl,
+        authenticated: probe.authenticated,
+        reason: probe.reason,
+        currentUrl: probe.currentUrl,
+        title: probe.title,
+        textLength: probe.textLength,
+        articleTextLength: probe.articleTextLength
+      });
+      if (probe.authenticated) {
+        logStep("检测到已有平台登录态，跳过自动登录", { platform: platform.name });
+        return;
+      }
+    }
     const credential = await credentials.get(platform.key);
     if (credential?.username && credential?.password && credential?.loginUrl) {
       const loginUrl = parseUrlList([credential.loginUrl])[0];
@@ -682,7 +700,7 @@ async function ensureCredentialsForExport(platform) {
 
 async function runExportTask({ taskId, urls, platform, delayRange }) {
   throwIfTaskCancelled(taskId);
-  await ensureCredentialsForExport(platform);
+  await ensureCredentialsForExport(platform, urls);
   throwIfTaskCancelled(taskId);
   logStep("打开预热页面", { url: urls[0] });
   const warmupTab = await session.openWarmupTab(urls[0], { waitMs });
